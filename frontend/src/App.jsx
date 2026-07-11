@@ -73,6 +73,17 @@ export default function App() {
   // Drag over states
   const [dragOverCol, setDragOverCol] = useState(null);
 
+  // UI/UX Enhancements States
+  const [toasts, setToasts] = useState([]);
+  const [draggingIssueId, setDraggingIssueId] = useState(null);
+  const [enabledWidgets, setEnabledWidgets] = useState({
+    summary: true,
+    priorities: true,
+    completion: true
+  });
+  const [tourStep, setTourStep] = useState(null);
+  const [boardLoading, setBoardLoading] = useState(false);
+
   // --- API FETCH HELPER ---
   const fetchApi = async (endpoint, options = {}) => {
     const headers = {
@@ -104,6 +115,27 @@ export default function App() {
     }
   }, [token]);
 
+  // Toast notifications helper
+  const showToast = (message, type = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
+
+  // Onboarding tour trigger
+  useEffect(() => {
+    if (user) {
+      const tourDone = localStorage.getItem('tour_completed');
+      if (!tourDone) {
+        setTourStep(1);
+      }
+    } else {
+      setTourStep(null);
+    }
+  }, [user]);
+
   // Load projects and users list
   const loadDashboardData = async () => {
     try {
@@ -114,17 +146,74 @@ export default function App() {
       setProjects(projData);
       setUsersList(usersData);
     } catch (err) {
-      alert('Error loading dashboard: ' + err.message);
+      showToast('Error loading dashboard: ' + err.message, 'danger');
+    }
+  };
+
+  // Card-on-Card Drop Vertical Reordering
+  const handleDragOverCard = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDropOnCard = async (e, targetIssue) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverCol(null);
+    if (!draggingIssueId || draggingIssueId === targetIssue.id) return;
+
+    const list = [...(projectDetail.issues || [])];
+    const sourceIndex = list.findIndex(i => i.id === draggingIssueId);
+    const targetIndex = list.findIndex(i => i.id === targetIssue.id);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    const sourceIssue = { ...list[sourceIndex], status: targetIssue.status };
+    
+    list.splice(sourceIndex, 1);
+    
+    const newTargetIndex = list.findIndex(i => i.id === targetIssue.id);
+    list.splice(newTargetIndex, 0, sourceIssue);
+
+    const columnIssues = list.filter(i => i.status === targetIssue.status);
+    const updatedIssues = columnIssues.map((issue, idx) => ({
+      id: issue.id,
+      status: issue.status,
+      order: idx
+    }));
+
+    // Optimistic UI updates
+    setProjectDetail(prev => ({
+      ...prev,
+      issues: prev.issues.map(i => {
+        const match = updatedIssues.find(up => up.id === i.id);
+        if (match) return { ...i, status: match.status, order: match.order };
+        if (i.id === draggingIssueId) return { ...i, status: targetIssue.status };
+        return i;
+      })
+    }));
+
+    try {
+      await fetchApi('/issues/reorder', {
+        method: 'PATCH',
+        body: JSON.stringify({ issues: updatedIssues })
+      });
+      showToast('Task reordered', 'success');
+      loadProjectDetail(selectedProjectId);
+    } catch (err) {
+      showToast('Failed to reorder: ' + err.message, 'danger');
+      loadProjectDetail(selectedProjectId);
     }
   };
 
   // Load individual project details (sprints + issues)
   const loadProjectDetail = async (id) => {
+    setBoardLoading(true);
     try {
       const data = await fetchApi(`/projects/${id}`);
       setProjectDetail(data);
     } catch (err) {
-      alert('Error loading project details: ' + err.message);
+      showToast('Error loading project: ' + err.message, 'danger');
+    } finally {
+      setBoardLoading(false);
     }
   };
 
@@ -183,7 +272,7 @@ export default function App() {
       setComments(prev => [...prev, newComment]);
       setNewCommentText('');
     } catch (err) {
-      alert('Failed to post comment: ' + err.message);
+      showToast('Failed to post comment: ' + err.message, 'danger');
     }
   };
 
@@ -276,7 +365,7 @@ export default function App() {
       setToken(data.token);
       setUser(data.user);
     } catch (err) {
-      alert('Login failed: ' + err.message);
+      showToast('Login failed: ' + err.message, 'danger');
     } finally {
       setLoading(false);
     }
@@ -319,8 +408,9 @@ export default function App() {
       setNewProjName('');
       setNewProjDesc('');
       loadDashboardData();
+      showToast('Project created successfully', 'success');
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to create project: ' + err.message, 'danger');
     }
   };
 
@@ -342,8 +432,9 @@ export default function App() {
       setNewSprintStart('');
       setNewSprintEnd('');
       loadProjectDetail(selectedProjectId);
+      showToast('Phase created successfully', 'success');
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to create phase: ' + err.message, 'danger');
     }
   };
 
@@ -370,8 +461,9 @@ export default function App() {
       setNewIssueAssignee('');
       setNewIssueSprint('');
       loadProjectDetail(selectedProjectId);
+      showToast('Task created successfully', 'success');
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to create task: ' + err.message, 'danger');
     }
   };
 
@@ -382,8 +474,9 @@ export default function App() {
     try {
       await fetchApi(`/projects/${projId}`, { method: 'DELETE' });
       loadDashboardData();
+      showToast('Project deleted successfully', 'info');
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to delete project: ' + err.message, 'danger');
     }
   };
 
@@ -395,8 +488,9 @@ export default function App() {
         body: JSON.stringify({ status: 'ACTIVE' })
       });
       loadProjectDetail(selectedProjectId);
+      showToast('Phase started successfully', 'success');
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to start phase: ' + err.message, 'danger');
     }
   };
 
@@ -409,8 +503,9 @@ export default function App() {
       });
       confetti({ particleCount: 150, spread: 80 });
       loadProjectDetail(selectedProjectId);
+      showToast('Phase completed successfully', 'success');
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to complete phase: ' + err.message, 'danger');
     }
   };
 
@@ -425,11 +520,12 @@ export default function App() {
         setSelectedIssue(updatedData);
       }
       loadProjectDetail(selectedProjectId);
+      showToast('Task status updated', 'info');
       if (newStatus === 'DONE') {
         confetti({ particleCount: 50, spread: 60 });
       }
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to update: ' + err.message, 'danger');
     }
   };
 
@@ -451,8 +547,9 @@ export default function App() {
       setSelectedIssue(updatedData);
       setIsEditingIssue(false);
       loadProjectDetail(selectedProjectId);
+      showToast('Task details saved', 'success');
     } catch (err) {
-      alert('Failed to update issue: ' + err.message);
+      showToast('Failed to save: ' + err.message, 'danger');
     }
   };
 
@@ -463,8 +560,9 @@ export default function App() {
       await fetchApi(`/issues/${issueId}`, { method: 'DELETE' });
       setShowIssueDetailModal(false);
       loadProjectDetail(selectedProjectId);
+      showToast('Task deleted successfully', 'info');
     } catch (err) {
-      alert(err.message);
+      showToast('Failed to delete: ' + err.message, 'danger');
     }
   };
 
@@ -520,7 +618,7 @@ export default function App() {
         confetti({ particleCount: 70, spread: 50 });
       }
     } catch (err) {
-      alert('Failed to drop: ' + err.message);
+      showToast('Failed to move: ' + err.message, 'danger');
       loadProjectDetail(selectedProjectId);
     }
   };
@@ -705,6 +803,94 @@ export default function App() {
               </button>
             </div>
 
+            {/* Dashboard Widgets Settings toggles */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '0.8rem 1.2rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', width: 'fit-content' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Dashboard Widgets:</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={enabledWidgets.summary} onChange={e => setEnabledWidgets(prev => ({ ...prev, summary: e.target.checked }))} /> Summary
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={enabledWidgets.priorities} onChange={e => setEnabledWidgets(prev => ({ ...prev, priorities: e.target.checked }))} /> Priority Breakdown
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={enabledWidgets.completion} onChange={e => setEnabledWidgets(prev => ({ ...prev, completion: e.target.checked }))} /> Completion Rate
+              </label>
+            </div>
+
+            {/* Widgets Grid */}
+            <div className="widgets-grid" style={{ marginBottom: '2rem' }}>
+              {enabledWidgets.summary && (
+                <div className="widget-card">
+                  <h4>Summary Metrics</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
+                    <div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>TOTAL PROJECTS</p>
+                      <p className="widget-stat">{projects.length}</p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>UNREAD ALERTS</p>
+                      <p className="widget-stat" style={{ background: 'linear-gradient(135deg, var(--danger) 0%, var(--warning) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        {notifications.filter(n => !n.isRead).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {enabledWidgets.priorities && (() => {
+                let low = 0, medium = 0, high = 0, urgent = 0;
+                const list = projectDetail?.issues || [];
+                list.forEach(i => {
+                  if (i.priority === 'LOW') low++;
+                  else if (i.priority === 'MEDIUM') medium++;
+                  else if (i.priority === 'HIGH') high++;
+                  else if (i.priority === 'URGENT') urgent++;
+                });
+                return (
+                  <div className="widget-card">
+                    <h4>Task Priorities {projectDetail ? `(${projectDetail.key})` : '(Enter a Project to view)'}</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.2rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                        <span>Urgent: {urgent}</span>
+                        <span>High: {high}</span>
+                        <span>Med: {medium}</span>
+                        <span>Low: {low}</span>
+                      </div>
+                      <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)', marginTop: '0.4rem' }}>
+                        <div style={{ width: `${(urgent / (urgent+high+medium+low || 1))*100}%`, background: 'var(--danger)' }} />
+                        <div style={{ width: `${(high / (urgent+high+medium+low || 1))*100}%`, background: 'var(--warning)' }} />
+                        <div style={{ width: `${(medium / (urgent+high+medium+low || 1))*100}%`, background: 'var(--primary)' }} />
+                        <div style={{ width: `${(low / (urgent+high+medium+low || 1))*100}%`, background: 'var(--success)' }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {enabledWidgets.completion && (() => {
+                const list = projectDetail?.issues || [];
+                const total = list.length;
+                const done = list.filter(i => i.status === 'DONE').length;
+                const rate = total > 0 ? Math.round((done / total) * 100) : 0;
+                return (
+                  <div className="widget-card">
+                    <h4>Completion Rate {projectDetail ? `(${projectDetail.key})` : ''}</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.4rem' }}>
+                      <p className="widget-stat" style={{ fontSize: '2.4rem' }}>{rate}%</p>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                          {done} of {total} tasks completed
+                        </p>
+                        <div className="progress-bar-container">
+                          <div className="progress-bar-fill" style={{ width: `${rate}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             <div className="project-grid">
               {projects.map(proj => (
                 <div 
@@ -744,6 +930,24 @@ export default function App() {
                 <div className="board-info">
                   <h2>{projectDetail.name} <span className="project-key" style={{ marginBottom: 0 }}>{projectDetail.key}</span></h2>
                   <p>{projectDetail.description}</p>
+                  
+                  {/* Project Progress Meter */}
+                  {(() => {
+                    const total = projectDetail.issues?.length || 0;
+                    const done = projectDetail.issues?.filter(i => i.status === 'DONE').length || 0;
+                    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                    return (
+                      <div style={{ marginTop: '0.8rem', width: '280px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+                          <span>Project Progress</span>
+                          <span>{pct}% ({done}/{total})</span>
+                        </div>
+                        <div className="progress-bar-container" style={{ height: '5px' }}>
+                          <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <button className="btn btn-secondary" onClick={() => setShowNewSprintModal(true)}>
@@ -815,6 +1019,26 @@ export default function App() {
                     <p className="sprint-dates">
                       Duration: {new Date(projectDetail.sprints[0].startDate).toLocaleDateString()} - {new Date(projectDetail.sprints[0].endDate).toLocaleDateString()}
                     </p>
+
+                    {/* Phase Progress Bar */}
+                    {(() => {
+                      const activePhase = projectDetail.sprints[0];
+                      const phaseTasks = projectDetail.issues?.filter(i => i.sprintId === activePhase.id) || [];
+                      const phaseTotal = phaseTasks.length;
+                      const phaseDone = phaseTasks.filter(i => i.status === 'DONE').length;
+                      const phasePct = phaseTotal > 0 ? Math.round((phaseDone / phaseTotal) * 100) : 0;
+                      return (
+                        <div style={{ marginTop: '0.6rem', width: '220px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.15rem' }}>
+                            <span>Phase Progress</span>
+                            <span>{phasePct}% ({phaseDone}/{phaseTotal})</span>
+                          </div>
+                          <div className="progress-bar-container" style={{ height: '4px' }}>
+                            <div className="progress-bar-fill" style={{ width: `${phasePct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     {projectDetail.sprints[0].status === 'PLANNED' && (
@@ -873,40 +1097,49 @@ export default function App() {
                         <span className="col-count">{filteredIssues.length}</span>
                       </div>
                       <div className={`col-cards ${dragOverCol === status ? 'drag-over' : ''}`}>
-                        {filteredIssues.map(issue => (
-                          <div 
-                            key={issue.id} 
-                            className="card-item"
-                            draggable
-                            onDragStart={e => handleDragStart(e, issue.id)}
-                            onClick={() => { 
-                              setSelectedIssue(issue); 
-                              setEditIssueTitle(issue.title);
-                              setEditIssueDesc(issue.description || '');
-                              setEditIssuePriority(issue.priority);
-                              setEditIssueAssignee(issue.assigneeId || '');
-                              setEditIssueSprint(issue.sprintId || '');
-                              setIsEditingIssue(false);
-                              setShowIssueDetailModal(true); 
-                            }}
-                          >
-                            <h4 className="card-title">{issue.title}</h4>
-                            <div className="card-footer">
-                              <span className={`priority-tag ${issue.priority.toLowerCase()}`}>
-                                {issue.priority}
-                              </span>
-                              {issue.assigneeImageUrl && (
-                                <img 
-                                  src={issue.assigneeImageUrl} 
-                                  alt={issue.assigneeName} 
-                                  className="user-avatar" 
-                                  style={{ width: 24, height: 24 }}
-                                  title={`Assigned to ${issue.assigneeName}`}
-                                />
-                              )}
+                        {boardLoading ? (
+                          <>
+                            <div className="skeleton-card animate-pulse" />
+                            <div className="skeleton-card animate-pulse" />
+                          </>
+                        ) : (
+                          filteredIssues.map(issue => (
+                            <div 
+                              key={issue.id} 
+                              className="card-item"
+                              draggable
+                              onDragStart={e => handleDragStart(e, issue.id)}
+                              onDragOver={handleDragOverCard}
+                              onDrop={e => handleDropOnCard(e, issue)}
+                              onClick={() => { 
+                                setSelectedIssue(issue); 
+                                setEditIssueTitle(issue.title);
+                                setEditIssueDesc(issue.description || '');
+                                setEditIssuePriority(issue.priority);
+                                setEditIssueAssignee(issue.assigneeId || '');
+                                setEditIssueSprint(issue.sprintId || '');
+                                setIsEditingIssue(false);
+                                setShowIssueDetailModal(true); 
+                              }}
+                            >
+                              <h4 className="card-title">{issue.title}</h4>
+                              <div className="card-footer">
+                                <span className={`priority-tag ${issue.priority.toLowerCase()}`}>
+                                  {issue.priority}
+                                </span>
+                                {issue.assigneeImageUrl && (
+                                  <img 
+                                    src={issue.assigneeImageUrl} 
+                                    alt={issue.assigneeName} 
+                                    className="user-avatar" 
+                                    style={{ width: 24, height: 24 }}
+                                    title={`Assigned to ${issue.assigneeName}`}
+                                  />
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     </div>
                   );
@@ -1250,6 +1483,61 @@ export default function App() {
             )}
           </div>
         </div>
+      )}
+
+      {/* --- TOAST CONTAINER --- */}
+      <div className="toast-container">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast-item ${t.type}`}>
+            {t.type === 'success' ? '✔️' : t.type === 'danger' ? '❌' : 'ℹ️'} {t.message}
+          </div>
+        ))}
+      </div>
+
+      {/* --- ONBOARDING TOUR --- */}
+      {tourStep !== null && (
+        <>
+          <div className="tour-overlay" onClick={() => { localStorage.setItem('tour_completed', 'true'); setTourStep(null); }} />
+          
+          {tourStep === 1 && (
+            <div className="tour-tooltip bottom" style={{ top: '220px', left: '60px' }}>
+              <h4 style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '0.95rem' }}>Step 1: Create a Project</h4>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                Start by creating your first project workspace. Click "Create Project" to get started.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', width: '100%' }}>
+                <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => { localStorage.setItem('tour_completed', 'true'); setTourStep(null); showToast('Tour skipped', 'info'); }}>Skip</button>
+                <button className="btn btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setTourStep(2)}>Next</button>
+              </div>
+            </div>
+          )}
+          
+          {tourStep === 2 && (
+            <div className="tour-tooltip bottom" style={{ top: '240px', right: '140px' }}>
+              <h4 style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '0.95rem' }}>Step 2: Add Phases & Deadlines</h4>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                Group tasks into specific timeframes. Click "Add Phase" to set start and end dates.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', width: '100%' }}>
+                <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setTourStep(1)}>Back</button>
+                <button className="btn btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setTourStep(3)}>Next</button>
+              </div>
+            </div>
+          )}
+          
+          {tourStep === 3 && (
+            <div className="tour-tooltip bottom" style={{ top: '240px', right: '20px' }}>
+              <h4 style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '0.95rem' }}>Step 3: Create Tasks</h4>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                Add tasks, assign them to team members, and select a priority level.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', width: '100%' }}>
+                <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setTourStep(2)}>Back</button>
+                <button className="btn btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => { localStorage.setItem('tour_completed', 'true'); setTourStep(null); showToast('Tour finished! Enjoy Arbeit.', 'success'); }}>Finish</button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
