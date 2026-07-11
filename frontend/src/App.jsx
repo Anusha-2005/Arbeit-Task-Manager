@@ -20,6 +20,11 @@ export default function App() {
   const [activeView, setActiveView] = useState('dashboard'); // dashboard, board
   const [usersList, setUsersList] = useState([]);
 
+  // Filters state
+  const [selectedSprintFilter, setSelectedSprintFilter] = useState('all'); // 'all', 'backlog', or specific sprintId
+  const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('ALL'); // 'ALL', 'LOW', 'MEDIUM', 'HIGH', 'URGENT'
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Form states
   const [loginEmail, setLoginEmail] = useState('');
   const [loginName, setLoginName] = useState('');
@@ -43,6 +48,14 @@ export default function App() {
 
   const [showIssueDetailModal, setShowIssueDetailModal] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState(null);
+
+  // Issue Detail edit states
+  const [isEditingIssue, setIsEditingIssue] = useState(false);
+  const [editIssueTitle, setEditIssueTitle] = useState('');
+  const [editIssueDesc, setEditIssueDesc] = useState('');
+  const [editIssuePriority, setEditIssuePriority] = useState('MEDIUM');
+  const [editIssueAssignee, setEditIssueAssignee] = useState('');
+  const [editIssueSprint, setEditIssueSprint] = useState('');
 
   // Drag over states
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -105,6 +118,9 @@ export default function App() {
   useEffect(() => {
     if (selectedProjectId) {
       loadProjectDetail(selectedProjectId);
+      setSelectedSprintFilter('all');
+      setSelectedPriorityFilter('ALL');
+      setSearchQuery('');
     }
   }, [selectedProjectId]);
 
@@ -253,16 +269,42 @@ export default function App() {
   // Update Individual Issue Status
   const handleUpdateIssueStatus = async (issueId, newStatus) => {
     try {
-      await fetchApi(`/issues/${issueId}`, {
+      const updatedData = await fetchApi(`/issues/${issueId}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus })
       });
+      if (selectedIssue && selectedIssue.id === issueId) {
+        setSelectedIssue(updatedData);
+      }
       loadProjectDetail(selectedProjectId);
       if (newStatus === 'DONE') {
         confetti({ particleCount: 50, spread: 60 });
       }
     } catch (err) {
       alert(err.message);
+    }
+  };
+
+  // Update Issue details (title, description, assignee, priority, sprint)
+  const handleUpdateIssueDetails = async (e) => {
+    e.preventDefault();
+    try {
+      const updatedData = await fetchApi(`/issues/${selectedIssue.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: editIssueTitle,
+          description: editIssueDesc,
+          priority: editIssuePriority,
+          assigneeId: editIssueAssignee || null,
+          sprintId: editIssueSprint || null
+        })
+      });
+      
+      setSelectedIssue(updatedData);
+      setIsEditingIssue(false);
+      loadProjectDetail(selectedProjectId);
+    } catch (err) {
+      alert('Failed to update issue: ' + err.message);
     }
   };
 
@@ -463,9 +505,56 @@ export default function App() {
                 </div>
               </div>
 
+              {/* FILTERS AND SEARCH */}
+              <div className="board-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.03)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>
+                <div style={{ flex: '1', minWidth: '200px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Search issues by title/description..." 
+                    className="form-control"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Sprint:</span>
+                    <select 
+                      className="form-control" 
+                      style={{ padding: '0.4rem 0.8rem', width: 'auto', minWidth: '150px' }}
+                      value={selectedSprintFilter}
+                      onChange={e => setSelectedSprintFilter(e.target.value)}
+                    >
+                      <option value="all">All Sprints</option>
+                      <option value="backlog">Backlog (No Sprint)</option>
+                      {(projectDetail.sprints || []).map(s => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Priority:</span>
+                    <select 
+                      className="form-control" 
+                      style={{ padding: '0.4rem 0.8rem', width: 'auto' }}
+                      value={selectedPriorityFilter}
+                      onChange={e => setSelectedPriorityFilter(e.target.value)}
+                    >
+                      <option value="ALL">All Priorities</option>
+                      <option value="LOW">Low</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="HIGH">High</option>
+                      <option value="URGENT">Urgent</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               {/* ACTIVE SPRINT METRIC */}
               {projectDetail.sprints && projectDetail.sprints.length > 0 && (
-                <div className="sprint-section">
+                <div className="sprint-section" style={{ marginTop: 0 }}>
                   <div className="sprint-info">
                     <h3>
                       <span className={`sprint-badge ${projectDetail.sprints[0].status.toLowerCase()}`}>
@@ -495,7 +584,32 @@ export default function App() {
               {/* KANBAN BOARD */}
               <div className="board-columns">
                 {['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'].map(status => {
-                  const filteredIssues = (projectDetail.issues || []).filter(i => i.status === status);
+                  const filteredIssues = (projectDetail.issues || []).filter(i => {
+                    // 1. Status check
+                    if (i.status !== status) return false;
+                    
+                    // 2. Sprint check
+                    if (selectedSprintFilter === 'backlog') {
+                      if (i.sprintId) return false;
+                    } else if (selectedSprintFilter !== 'all') {
+                      if (i.sprintId !== selectedSprintFilter) return false;
+                    }
+                    
+                    // 3. Priority check
+                    if (selectedPriorityFilter !== 'ALL') {
+                      if (i.priority !== selectedPriorityFilter) return false;
+                    }
+                    
+                    // 4. Search check (title matching query)
+                    if (searchQuery.trim()) {
+                      const query = searchQuery.toLowerCase();
+                      const matchTitle = i.title.toLowerCase().includes(query);
+                      const matchDesc = (i.description || '').toLowerCase().includes(query);
+                      if (!matchTitle && !matchDesc) return false;
+                    }
+                    
+                    return true;
+                  });
                   return (
                     <div 
                       key={status} 
@@ -515,7 +629,16 @@ export default function App() {
                             className="card-item"
                             draggable
                             onDragStart={e => handleDragStart(e, issue.id)}
-                            onClick={() => { setSelectedIssue(issue); setShowIssueDetailModal(true); }}
+                            onClick={() => { 
+                              setSelectedIssue(issue); 
+                              setEditIssueTitle(issue.title);
+                              setEditIssueDesc(issue.description || '');
+                              setEditIssuePriority(issue.priority);
+                              setEditIssueAssignee(issue.assigneeId || '');
+                              setEditIssueSprint(issue.sprintId || '');
+                              setIsEditingIssue(false);
+                              setShowIssueDetailModal(true); 
+                            }}
                           >
                             <h4 className="card-title">{issue.title}</h4>
                             <div className="card-footer">
@@ -704,65 +827,142 @@ export default function App() {
       {showIssueDetailModal && selectedIssue && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '650px' }}>
-            <span className="project-key" style={{ marginBottom: '0.8rem' }}>{selectedIssue.id}</span>
-            <h3>{selectedIssue.title}</h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', margin: '1.5rem 0' }}>
-              <div>
-                <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.4rem', fontSize: '0.85rem' }}>Description</h5>
-                <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.4', background: 'rgba(0,0,0,0.1)', padding: '0.8rem', borderRadius: '4px' }}>
-                  {selectedIssue.description || 'No description provided.'}
-                </p>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
-                  <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Status</h5>
-                  <select 
+            {isEditingIssue ? (
+              <form onSubmit={handleUpdateIssueDetails}>
+                <span className="project-key" style={{ marginBottom: '0.8rem' }}>Editing {selectedIssue.id}</span>
+                <div className="form-group" style={{ marginTop: '0.5rem' }}>
+                  <label>Title</label>
+                  <input 
+                    type="text" 
                     className="form-control" 
-                    value={selectedIssue.status}
-                    onChange={e => handleUpdateIssueStatus(selectedIssue.id, e.target.value)}
-                  >
-                    <option value="TODO">To Do</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="IN_REVIEW">In Review</option>
-                    <option value="DONE">Done</option>
-                  </select>
+                    value={editIssueTitle} 
+                    onChange={e => setEditIssueTitle(e.target.value)} 
+                    required 
+                  />
                 </div>
-                <div>
-                  <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Priority</h5>
-                  <span className={`priority-tag ${selectedIssue.priority.toLowerCase()}`} style={{ display: 'inline-block', marginTop: '0.2rem' }}>
-                    {selectedIssue.priority}
-                  </span>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', margin: '1.5rem 0' }}>
+                  <div>
+                    <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.4rem', fontSize: '0.85rem' }}>Description</h5>
+                    <textarea 
+                      className="form-control" 
+                      rows="8" 
+                      value={editIssueDesc} 
+                      onChange={e => setEditIssueDesc(e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Priority</h5>
+                      <select 
+                        className="form-control" 
+                        value={editIssuePriority} 
+                        onChange={e => setEditIssuePriority(e.target.value)}
+                      >
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                        <option value="URGENT">Urgent</option>
+                      </select>
+                    </div>
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Assignee</h5>
+                      <select 
+                        className="form-control" 
+                        value={editIssueAssignee} 
+                        onChange={e => setEditIssueAssignee(e.target.value)}
+                      >
+                        <option value="">Unassigned</option>
+                        {usersList.map(u => (
+                          <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Sprint</h5>
+                      <select 
+                        className="form-control" 
+                        value={editIssueSprint} 
+                        onChange={e => setEditIssueSprint(e.target.value)}
+                      >
+                        <option value="">Backlog</option>
+                        {(projectDetail.sprints || []).map(s => (
+                          <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Assignee</h5>
-                  <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                    {selectedIssue.assigneeImageUrl ? (
-                      <>
-                        <img src={selectedIssue.assigneeImageUrl} className="user-avatar" style={{ width: 24, height: 24 }} alt="" />
-                        <span>{selectedIssue.assigneeName}</span>
-                      </>
-                    ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
-                    )}
-                  </p>
-                </div>
-                <div>
-                  <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Reporter</h5>
-                  <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                    <img src={selectedIssue.reporterImageUrl || 'https://avatar.iran.liara.run/public/girl'} className="user-avatar" style={{ width: 24, height: 24 }} alt="" />
-                    <span>{selectedIssue.reporterName}</span>
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            <div className="form-actions">
-              <button className="btn btn-secondary btn-danger" onClick={() => handleDeleteIssue(selectedIssue.id)}>
-                <Trash2 size={14} /> Delete
-              </button>
-              <button className="btn btn-secondary" onClick={() => setShowIssueDetailModal(false)}>Close</button>
-            </div>
+                <div className="form-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setIsEditingIssue(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary">Save Changes</button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <span className="project-key" style={{ marginBottom: '0.8rem' }}>{selectedIssue.id}</span>
+                <h3>{selectedIssue.title}</h3>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', margin: '1.5rem 0' }}>
+                  <div>
+                    <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.4rem', fontSize: '0.85rem' }}>Description</h5>
+                    <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.4', background: 'rgba(0,0,0,0.1)', padding: '0.8rem', borderRadius: '4px', whiteSpace: 'pre-wrap' }}>
+                      {selectedIssue.description || 'No description provided.'}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Status</h5>
+                      <select 
+                        className="form-control" 
+                        value={selectedIssue.status}
+                        onChange={e => handleUpdateIssueStatus(selectedIssue.id, e.target.value)}
+                      >
+                        <option value="TODO">To Do</option>
+                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="IN_REVIEW">In Review</option>
+                        <option value="DONE">Done</option>
+                      </select>
+                    </div>
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Priority</h5>
+                      <span className={`priority-tag ${selectedIssue.priority.toLowerCase()}`} style={{ display: 'inline-block', marginTop: '0.2rem' }}>
+                        {selectedIssue.priority}
+                      </span>
+                    </div>
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Assignee</h5>
+                      <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
+                        {selectedIssue.assigneeImageUrl ? (
+                          <>
+                            <img src={selectedIssue.assigneeImageUrl} className="user-avatar" style={{ width: 24, height: 24 }} alt="" />
+                            <span>{selectedIssue.assigneeName}</span>
+                          </>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Reporter</h5>
+                      <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
+                        <img src={selectedIssue.reporterImageUrl || 'https://avatar.iran.liara.run/public/girl'} className="user-avatar" style={{ width: 24, height: 24 }} alt="" />
+                        <span>{selectedIssue.reporterName}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-actions">
+                  <button className="btn btn-primary" onClick={() => setIsEditingIssue(true)}>Edit Details</button>
+                  <button className="btn btn-secondary btn-danger" onClick={() => handleDeleteIssue(selectedIssue.id)}>
+                    <Trash2 size={14} /> Delete
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => setShowIssueDetailModal(false)}>Close</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

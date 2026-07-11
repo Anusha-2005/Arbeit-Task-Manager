@@ -13,10 +13,10 @@ router.post('/', authenticateToken, async (req, res) => {
   const id = 'sprint_' + Date.now();
 
   try {
-    // Check name uniqueness
-    const existing = await db.query('SELECT id FROM sprints WHERE name = ?', [name]);
+    // Check name uniqueness per project
+    const existing = await db.query('SELECT id FROM sprints WHERE projectId = ? AND name = ?', [projectId, name]);
     if (existing.length > 0) {
-      return res.status(400).json({ error: 'Sprint name must be unique' });
+      return res.status(400).json({ error: 'Sprint name must be unique in this project' });
     }
 
     await db.query(

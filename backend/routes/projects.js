@@ -58,16 +58,18 @@ router.post('/', authenticateToken, async (req, res) => {
   const id = 'proj_' + Date.now();
   const orgId = organizationId || 'org_default';
 
+  const projectKey = key.toUpperCase();
+
   try {
     // Check if key exists in org
-    const existing = await db.query('SELECT id FROM projects WHERE organizationId = ? AND `key` = ?', [orgId, key]);
+    const existing = await db.query('SELECT id FROM projects WHERE organizationId = ? AND `key` = ?', [orgId, projectKey]);
     if (existing.length > 0) {
       return res.status(400).json({ error: 'A project with this key already exists in the organization.' });
     }
 
     await db.query(
       'INSERT INTO projects (id, name, `key`, description, organizationId) VALUES (?, ?, ?, ?, ?)',
-      [id, name, key.toUpperCase(), description, orgId]
+      [id, name, projectKey, description, orgId]
     );
 
     const newProject = await db.query('SELECT * FROM projects WHERE id = ?', [id]);
