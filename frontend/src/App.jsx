@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   FolderPlus, Plus, Calendar, CheckSquare, 
   Trash2, LogOut, Loader2, ArrowLeft,
-  ChevronRight, AlertCircle, Play, CheckCircle
+  ChevronRight, AlertCircle, Play, CheckCircle,
+  Bell, MessageSquare
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import io from 'socket.io-client';
 
 const API_BASE = '/api';
 
@@ -56,6 +58,18 @@ export default function App() {
   const [editIssuePriority, setEditIssuePriority] = useState('MEDIUM');
   const [editIssueAssignee, setEditIssueAssignee] = useState('');
   const [editIssueSprint, setEditIssueSprint] = useState('');
+
+  // Notifications states
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Socket state
+  const [socket, setSocket] = useState(null);
+
+  // Comments states
+  const [comments, setComments] = useState([]);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
 
   // Drag over states
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -115,6 +129,66 @@ export default function App() {
     }
   };
 
+  // Load unread notifications
+  const loadNotifications = async () => {
+    try {
+      const data = await fetchApi('/notifications');
+      setNotifications(data);
+    } catch (err) {
+      console.error('Failed to load notifications:', err.message);
+    }
+  };
+
+  // Mark single notification as read
+  const handleMarkAsRead = async (notifId) => {
+    try {
+      await fetchApi(`/notifications/${notifId}/read`, { method: 'PATCH' });
+      setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, isRead: 1 } : n));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Mark all notifications as read
+  const handleMarkAllAsRead = async () => {
+    try {
+      await fetchApi('/notifications/read-all', { method: 'PATCH' });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: 1 })));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Load comments
+  const loadComments = async (issueId) => {
+    setCommentsLoading(true);
+    try {
+      const data = await fetchApi(`/issues/${issueId}/comments`);
+      setComments(data);
+    } catch (err) {
+      console.error('Failed to load comments:', err.message);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  // Add a new comment
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    if (!newCommentText.trim()) return;
+    try {
+      const newComment = await fetchApi(`/issues/${selectedIssue.id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ content: newCommentText })
+      });
+      setComments(prev => [...prev, newComment]);
+      setNewCommentText('');
+    } catch (err) {
+      alert('Failed to post comment: ' + err.message);
+    }
+  };
+
+  // Project Selection handler
   useEffect(() => {
     if (selectedProjectId) {
       loadProjectDetail(selectedProjectId);
@@ -123,6 +197,71 @@ export default function App() {
       setSearchQuery('');
     }
   }, [selectedProjectId]);
+
+  // Load notifications on load/login
+  useEffect(() => {
+    if (token && user) {
+      loadNotifications();
+    }
+  }, [token, user]);
+
+  // Load comments when selectedIssue changes
+  useEffect(() => {
+    if (selectedIssue?.id) {
+      loadComments(selectedIssue.id);
+    }
+  }, [selectedIssue?.id]);
+
+  // WebSockets Setup
+  useEffect(() => {
+    if (token && user) {
+      // Connect to same origin host, Vite proxy handles WebSockets by default
+      const socketUrl = window.location.origin;
+      const newSocket = io(socketUrl, {
+        path: '/socket.io'
+      });
+      
+      setSocket(newSocket);
+
+      // Listen to notifications for this user
+      newSocket.on(`notification-${user.id}`, (data) => {
+        setNotifications(prev => [
+          { id: 'notif_' + Date.now(), message: data.message, isRead: 0, createdAt: new Date() },
+          ...prev
+        ]);
+      });
+
+      return () => newSocket.close();
+    }
+  }, [token, user]);
+
+  // Join/Leave project rooms on project selection
+  useEffect(() => {
+    if (socket && selectedProjectId) {
+      socket.emit('join-project', selectedProjectId);
+
+      socket.on('board-updated', (data) => {
+        if (data.projectId === selectedProjectId) {
+          loadProjectDetail(selectedProjectId);
+        }
+      });
+
+      socket.on('issue-updated', (data) => {
+        if (data.projectId === selectedProjectId) {
+          loadProjectDetail(selectedProjectId);
+          if (selectedIssue && selectedIssue.id === data.issueId) {
+            loadComments(data.issueId);
+          }
+        }
+      });
+
+      return () => {
+        socket.emit('leave-project', selectedProjectId);
+        socket.off('board-updated');
+        socket.off('issue-updated');
+      };
+    }
+  }, [socket, selectedProjectId, selectedIssue]);
 
   // Auth Handlers
   const handleLogin = async (e) => {
@@ -433,6 +572,108 @@ export default function App() {
               <ArrowLeft size={16} /> Back to Projects
             </button>
           )}
+
+          {/* Notifications Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="btn btn-secondary" 
+              style={{ position: 'relative', padding: '0.6rem' }} 
+              onClick={() => setShowNotifications(!showNotifications)}
+              title="Notifications"
+            >
+              <Bell size={18} />
+              {notifications.filter(n => !n.isRead).length > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: 'var(--danger)',
+                  color: 'white',
+                  borderRadius: '50%',
+                  width: '18px',
+                  height: '18px',
+                  fontSize: '0.7rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  boxShadow: '0 0 0 2px rgb(15, 23, 42)'
+                }}>
+                  {notifications.filter(n => !n.isRead).length}
+                </span>
+              )}
+            </button>
+            {showNotifications && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: '0',
+                marginTop: '0.8rem',
+                width: '320px',
+                background: 'rgb(24, 32, 51)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: 'var(--shadow-premium)',
+                zIndex: 999,
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.8rem 1rem',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                  background: 'rgba(0, 0, 0, 0.15)'
+                }}>
+                  <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Notifications</h4>
+                  {notifications.filter(n => !n.isRead).length > 0 && (
+                    <button 
+                      style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '500' }}
+                      onClick={handleMarkAllAsRead}
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                      No notifications yet.
+                    </div>
+                  ) : (
+                    notifications.map(n => (
+                      <div 
+                        key={n.id} 
+                        style={{
+                          padding: '0.8rem 1rem',
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.2rem',
+                          background: n.isRead ? 'transparent' : 'rgba(14, 165, 233, 0.04)',
+                          transition: 'var(--transition-smooth)'
+                        }}
+                      >
+                        <p style={{ fontSize: '0.85rem', color: n.isRead ? 'var(--text-secondary)' : 'var(--text-primary)', lineHeight: '1.3' }}>{n.message}</p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          {!n.isRead && (
+                            <button 
+                              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.7rem', cursor: 'pointer', textDecoration: 'underline' }}
+                              onClick={() => handleMarkAsRead(n.id)}
+                            >
+                              Mark read
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="user-profile">
             <img src={user.imageUrl} alt={user.name} className="user-avatar" />
             <span className="user-name">{user.name}</span>
@@ -907,9 +1148,53 @@ export default function App() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', margin: '1.5rem 0' }}>
                   <div>
                     <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.4rem', fontSize: '0.85rem' }}>Description</h5>
-                    <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.4', background: 'rgba(0,0,0,0.1)', padding: '0.8rem', borderRadius: '4px', whiteSpace: 'pre-wrap' }}>
+                    <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.4', background: 'rgba(0,0,0,0.1)', padding: '0.8rem', borderRadius: '4px', whiteSpace: 'pre-wrap', marginBottom: '1.5rem' }}>
                       {selectedIssue.description || 'No description provided.'}
                     </p>
+
+                    <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.6rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <MessageSquare size={14} /> Discussions ({comments.length})
+                    </h5>
+
+                    {/* Comments list */}
+                    <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem', paddingRight: '0.4rem' }}>
+                      {commentsLoading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem' }}>
+                          <Loader2 className="animate-spin" size={20} color="var(--primary)" />
+                        </div>
+                      ) : comments.length === 0 ? (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '0.5rem 0' }}>No comments yet. Start the conversation!</p>
+                      ) : (
+                        comments.map(c => (
+                          <div key={c.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', background: 'rgba(255, 255, 255, 0.02)', padding: '0.6rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                            <img src={c.userImageUrl || 'https://avatar.iran.liara.run/public/girl'} alt={c.userName} className="user-avatar" style={{ width: 24, height: 24, flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-primary)' }}>{c.userName}</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(c.createdAt).toLocaleDateString()}</span>
+                              </div>
+                              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4', wordBreak: 'break-word' }}>{c.content}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Comment Form */}
+                    <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Write a comment..." 
+                        className="form-control" 
+                        style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem' }}
+                        value={newCommentText}
+                        onChange={e => setNewCommentText(e.target.value)}
+                        required
+                      />
+                      <button type="submit" className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+                        Send
+                      </button>
+                    </form>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>

@@ -54,6 +54,25 @@ CREATE TABLE IF NOT EXISTS issues (
   FOREIGN KEY (sprintId) REFERENCES sprints (id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS comments (
+  id VARCHAR(36) PRIMARY KEY,
+  content TEXT NOT NULL,
+  issueId VARCHAR(36) NOT NULL,
+  userId VARCHAR(36) NOT NULL,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (issueId) REFERENCES issues (id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id VARCHAR(36) PRIMARY KEY,
+  message VARCHAR(255) NOT NULL,
+  userId VARCHAR(36) NOT NULL,
+  isRead BOOLEAN DEFAULT FALSE,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
+);
+
 -- Insert a default user for local development and testing
 INSERT INTO users (id, name, email, imageUrl, password)
 VALUES ('user_default', 'Anusha', 'anurama013@gmail.com', 'https://avatar.iran.liara.run/public/girl', 'password123')

@@ -38,6 +38,18 @@ router.post('/', authenticateToken, async (req, res) => {
       WHERE i.id = ?
     `, [id]);
 
+    const io = req.app.get('io');
+    // Broadcast creation to project room
+    io.to(projectId).emit('board-updated', { projectId });
+
+    // Generate notification if assigned to someone else
+    if (assigneeId && assigneeId !== reporterId) {
+      const notifId = 'notif_' + Date.now();
+      const msg = `You have been assigned to issue: ${title}`;
+      await db.query('INSERT INTO notifications (id, message, userId) VALUES (?, ?, ?)', [notifId, msg, assigneeId]);
+      io.emit(`notification-${assigneeId}`, { message: msg });
+    }
+
     res.status(201).json(issues[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -63,6 +75,18 @@ router.patch('/reorder', authenticateToken, async (req, res) => {
     }
 
     await connection.commit();
+
+    // Fetch projectId to broadcast update
+    if (issues.length > 0) {
+      const firstIssueId = issues[0].id;
+      const projResult = await db.query('SELECT projectId FROM issues WHERE id = ?', [firstIssueId]);
+      if (projResult.length > 0) {
+        const projectId = projResult[0].projectId;
+        const io = req.app.get('io');
+        io.to(projectId).emit('board-updated', { projectId });
+      }
+    }
+
     res.json({ message: 'Issues reordered successfully' });
   } catch (err) {
     await connection.rollback();
@@ -111,7 +135,19 @@ router.patch('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Issue not found' });
     }
 
-    res.json(issues[0]);
+    const updatedIssue = issues[0];
+    const io = req.app.get('io');
+    io.to(updatedIssue.projectId).emit('board-updated', { projectId: updatedIssue.projectId });
+
+    // Generate notification if assignee changed and it's not the current user
+    if (assigneeId !== undefined && assigneeId && assigneeId !== req.user.id) {
+      const notifId = 'notif_' + Date.now();
+      const msg = `You have been assigned to issue: ${updatedIssue.title}`;
+      await db.query('INSERT INTO notifications (id, message, userId) VALUES (?, ?, ?)', [notifId, msg, assigneeId]);
+      io.emit(`notification-${assigneeId}`, { message: msg });
+    }
+
+    res.json(updatedIssue);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -121,11 +157,75 @@ router.patch('/:id', authenticateToken, async (req, res) => {
 router.delete('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    const targetIssues = await db.query('SELECT projectId FROM issues WHERE id = ?', [id]);
+
     const result = await db.query('DELETE FROM issues WHERE id = ?', [id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Issue not found' });
     }
+
+    if (targetIssues.length > 0) {
+      const projectId = targetIssues[0].projectId;
+      const io = req.app.get('io');
+      io.to(projectId).emit('board-updated', { projectId });
+    }
+
     res.json({ message: 'Issue deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/issues/:issueId/comments - Get comments for an issue
+router.get('/:issueId/comments', authenticateToken, async (req, res) => {
+  const { issueId } = req.params;
+  try {
+    const comments = await db.query(`
+      SELECT c.*, u.name AS userName, u.imageUrl AS userImageUrl, u.email AS userEmail
+      FROM comments c
+      JOIN users u ON c.userId = u.id
+      WHERE c.issueId = ?
+      ORDER BY c.createdAt ASC
+    `, [issueId]);
+    res.json(comments);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/issues/:issueId/comments - Post a new comment
+router.post('/:issueId/comments', authenticateToken, async (req, res) => {
+  const { issueId } = req.params;
+  const { content } = req.body;
+  if (!content) {
+    return res.status(400).json({ error: 'Comment content is required' });
+  }
+
+  const id = 'comment_' + Date.now();
+  const userId = req.user.id;
+
+  try {
+    await db.query(
+      'INSERT INTO comments (id, content, issueId, userId) VALUES (?, ?, ?, ?)',
+      [id, content, issueId, userId]
+    );
+
+    const comments = await db.query(`
+      SELECT c.*, u.name AS userName, u.imageUrl AS userImageUrl, u.email AS userEmail
+      FROM comments c
+      JOIN users u ON c.userId = u.id
+      WHERE c.id = ?
+    `, [id]);
+
+    // Broadcast comment addition to project room via WebSockets
+    const io = req.app.get('io');
+    const issues = await db.query('SELECT projectId FROM issues WHERE id = ?', [issueId]);
+    if (issues.length > 0) {
+      const projectId = issues[0].projectId;
+      io.to(projectId).emit('issue-updated', { projectId, issueId });
+    }
+
+    res.status(201).json(comments[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

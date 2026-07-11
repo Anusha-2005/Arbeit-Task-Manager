@@ -41,11 +41,41 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
   }
 
   try {
+    const sprints = await db.query('SELECT name, projectId FROM sprints WHERE id = ?', [id]);
+    if (sprints.length === 0) {
+      return res.status(404).json({ error: 'Sprint not found' });
+    }
+    const sprintName = sprints[0].name;
+    const projectId = sprints[0].projectId;
+
     const result = await db.query('UPDATE sprints SET status = ? WHERE id = ?', [status, id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Sprint not found' });
     }
     const updatedSprint = await db.query('SELECT * FROM sprints WHERE id = ?', [id]);
+
+    // WebSocket broadcast
+    const io = req.app.get('io');
+    io.to(projectId).emit('board-updated', { projectId });
+
+    // Notifications for sprint status change
+    if (status === 'ACTIVE' || status === 'COMPLETED') {
+      const assignees = await db.query(
+        'SELECT DISTINCT assigneeId FROM issues WHERE sprintId = ? AND assigneeId IS NOT NULL',
+        [id]
+      );
+      const action = status === 'ACTIVE' ? 'started' : 'completed';
+      const msg = `Sprint "${sprintName}" has been ${action}!`;
+      
+      for (const row of assignees) {
+        if (row.assigneeId !== req.user.id) {
+          const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+          await db.query('INSERT INTO notifications (id, message, userId) VALUES (?, ?, ?)', [notifId, msg, row.assigneeId]);
+          io.emit(`notification-${row.assigneeId}`, { message: msg });
+        }
+      }
+    }
+
     res.json(updatedSprint[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
