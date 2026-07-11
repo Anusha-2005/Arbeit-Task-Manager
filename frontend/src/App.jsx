@@ -37,6 +37,7 @@ export default function App() {
   const [profileName, setProfileName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
   const [profilePassword, setProfilePassword] = useState('');
+  const [selectedAnalyticsProjectId, setSelectedAnalyticsProjectId] = useState('all');
   
   const [showNewProjModal, setShowNewProjModal] = useState(false);
   const [newProjName, setNewProjName] = useState('');
@@ -986,6 +987,166 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* --- DASHBOARD ANALYTICS SECTION --- */}
+            <div className="analytics-section" style={{ background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', padding: '1.5rem', marginBottom: '2rem', boxShadow: 'var(--shadow-premium)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: '700', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  📊 Analytics Overview
+                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Project:</span>
+                  <select 
+                    className="form-control"
+                    style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                    value={selectedAnalyticsProjectId}
+                    onChange={e => setSelectedAnalyticsProjectId(e.target.value)}
+                  >
+                    <option value="all">All Projects (Aggregated)</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.key})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {(() => {
+                let todo = 0, inProgress = 0, inReview = 0, done = 0;
+                let plannedPhases = 0, activePhases = 0, completedPhases = 0;
+
+                if (selectedAnalyticsProjectId === 'all') {
+                  projects.forEach(p => {
+                    const st = p.stats || { TODO: 0, IN_PROGRESS: 0, IN_REVIEW: 0, DONE: 0 };
+                    todo += st.TODO || 0;
+                    inProgress += st.IN_PROGRESS || 0;
+                    inReview += st.IN_REVIEW || 0;
+                    done += st.DONE || 0;
+
+                    const sp = p.sprints || { PLANNED: 0, ACTIVE: 0, COMPLETED: 0 };
+                    plannedPhases += sp.PLANNED || 0;
+                    activePhases += sp.ACTIVE || 0;
+                    completedPhases += sp.COMPLETED || 0;
+                  });
+                } else {
+                  const p = projects.find(proj => proj.id === selectedAnalyticsProjectId);
+                  if (p) {
+                    const st = p.stats || { TODO: 0, IN_PROGRESS: 0, IN_REVIEW: 0, DONE: 0 };
+                    todo = st.TODO || 0;
+                    inProgress = st.IN_PROGRESS || 0;
+                    inReview = st.IN_REVIEW || 0;
+                    done = st.DONE || 0;
+
+                    const sp = p.sprints || { PLANNED: 0, ACTIVE: 0, COMPLETED: 0 };
+                    plannedPhases = sp.PLANNED || 0;
+                    activePhases = sp.ACTIVE || 0;
+                    completedPhases = sp.COMPLETED || 0;
+                  }
+                }
+
+                const totalTasks = todo + inProgress + inReview + done;
+                const totalPhases = plannedPhases + activePhases + completedPhases;
+
+                if (totalTasks === 0 && totalPhases === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                      No tasks or phases created yet. Create a project and add tasks to see metrics.
+                    </div>
+                  );
+                }
+
+                const todoPct = totalTasks > 0 ? Math.round((todo / totalTasks) * 100) : 0;
+                const progressPct = totalTasks > 0 ? Math.round((inProgress / totalTasks) * 100) : 0;
+                const reviewPct = totalTasks > 0 ? Math.round((inReview / totalTasks) * 100) : 0;
+                const donePct = totalTasks > 0 ? Math.round((done / totalTasks) * 100) : 0;
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+                    
+                    {/* Task Status Distribution Card */}
+                    <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', padding: '1.2rem' }}>
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+                        Task Status Distribution
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                            <span>To Do ({todo})</span>
+                            <span>{todoPct}%</span>
+                          </div>
+                          <div className="progress-bar-container" style={{ height: '8px' }}>
+                            <div className="progress-bar-fill" style={{ width: `${todoPct}%`, background: 'var(--text-muted)' }} />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                            <span>In Progress ({inProgress})</span>
+                            <span>{progressPct}%</span>
+                          </div>
+                          <div className="progress-bar-container" style={{ height: '8px' }}>
+                            <div className="progress-bar-fill" style={{ width: `${progressPct}%`, background: 'var(--primary)' }} />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                            <span>In Review ({inReview})</span>
+                            <span>{reviewPct}%</span>
+                          </div>
+                          <div className="progress-bar-container" style={{ height: '8px' }}>
+                            <div className="progress-bar-fill" style={{ width: `${reviewPct}%`, background: 'var(--warning)' }} />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                            <span>Completed Tasks ({done})</span>
+                            <span>{donePct}%</span>
+                          </div>
+                          <div className="progress-bar-container" style={{ height: '8px' }}>
+                            <div className="progress-bar-fill" style={{ width: `${donePct}%`, background: 'var(--success)' }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Phase Progress Card */}
+                    <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', padding: '1.2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        <h4 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+                          Timeframe Phase Analytics
+                        </h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.8rem', textAlign: 'center', marginBottom: '1rem' }}>
+                          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '0.6rem', borderRadius: '4px' }}>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0 }}>PLANNED</p>
+                            <p style={{ fontSize: '1.2rem', fontWeight: '700', margin: '0.2rem 0 0 0', color: 'var(--primary)' }}>{plannedPhases}</p>
+                          </div>
+                          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '0.6rem', borderRadius: '4px' }}>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0 }}>ACTIVE</p>
+                            <p style={{ fontSize: '1.2rem', fontWeight: '700', margin: '0.2rem 0 0 0', color: 'var(--warning)' }}>{activePhases}</p>
+                          </div>
+                          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '0.6rem', borderRadius: '4px' }}>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0 }}>COMPLETED</p>
+                            <p style={{ fontSize: '1.2rem', fontWeight: '700', margin: '0.2rem 0 0 0', color: 'var(--success)' }}>{completedPhases}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                          <span>Phase Completion Rate</span>
+                          <span>{totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0}%</span>
+                        </div>
+                        <div className="progress-bar-container" style={{ height: '8px' }}>
+                          <div className="progress-bar-fill" style={{ width: `${totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0}%`, background: 'var(--success)' }} />
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
                 );
               })()}

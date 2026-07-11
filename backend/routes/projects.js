@@ -3,11 +3,39 @@ const router = express.Router();
 const db = require('../config/db');
 const { authenticateToken } = require('./auth');
 
-// GET /api/projects - Get all projects
+// GET /api/projects - Get all projects with aggregated analytics
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const projects = await db.query('SELECT * FROM projects ORDER BY createdAt DESC');
-    res.json(projects);
+    
+    const projectsWithAnalytics = await Promise.all(projects.map(async (p) => {
+      const issueCounts = await db.query(
+        'SELECT status, COUNT(*) as count FROM issues WHERE projectId = ? GROUP BY status',
+        [p.id]
+      );
+      const sprintCounts = await db.query(
+        'SELECT status, COUNT(*) as count FROM sprints WHERE projectId = ? GROUP BY status',
+        [p.id]
+      );
+      
+      const stats = { TODO: 0, IN_PROGRESS: 0, IN_REVIEW: 0, DONE: 0 };
+      issueCounts.forEach(row => {
+        stats[row.status] = row.count;
+      });
+
+      const sprints = { PLANNED: 0, ACTIVE: 0, COMPLETED: 0 };
+      sprintCounts.forEach(row => {
+        sprints[row.status] = row.count;
+      });
+
+      return {
+        ...p,
+        stats,
+        sprints
+      };
+    }));
+
+    res.json(projectsWithAnalytics);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
