@@ -3,7 +3,7 @@ import {
   FolderPlus, Plus, Calendar, CheckSquare, 
   Trash2, LogOut, Loader2, ArrowLeft,
   ChevronRight, AlertCircle, Play, CheckCircle,
-  Bell, MessageSquare
+  Bell, MessageSquare, Sun, Moon, Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import io from 'socket.io-client';
@@ -48,12 +48,26 @@ export default function App() {
   const [newSprintStart, setNewSprintStart] = useState('');
   const [newSprintEnd, setNewSprintEnd] = useState('');
 
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+  const [boardViewMode, setBoardViewMode] = useState('kanban'); // 'kanban' or 'calendar'
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.body.classList.add('light-mode');
+    } else {
+      document.body.classList.remove('light-mode');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
   const [showNewIssueModal, setShowNewIssueModal] = useState(false);
   const [newIssueTitle, setNewIssueTitle] = useState('');
   const [newIssueDesc, setNewIssueDesc] = useState('');
   const [newIssuePriority, setNewIssuePriority] = useState('MEDIUM');
   const [newIssueAssignee, setNewIssueAssignee] = useState('');
   const [newIssueSprint, setNewIssueSprint] = useState('');
+  const [newIssueDueDate, setNewIssueDueDate] = useState('');
 
   const [showIssueDetailModal, setShowIssueDetailModal] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState(null);
@@ -65,6 +79,7 @@ export default function App() {
   const [editIssuePriority, setEditIssuePriority] = useState('MEDIUM');
   const [editIssueAssignee, setEditIssueAssignee] = useState('');
   const [editIssueSprint, setEditIssueSprint] = useState('');
+  const [editIssueDueDate, setEditIssueDueDate] = useState('');
 
   // Notifications states
   const [notifications, setNotifications] = useState([]);
@@ -500,6 +515,7 @@ export default function App() {
           priority: newIssuePriority,
           assigneeId: newIssueAssignee || null,
           sprintId: newIssueSprint || null,
+          dueDate: newIssueDueDate || null,
           projectId: selectedProjectId
         })
       });
@@ -509,6 +525,7 @@ export default function App() {
       setNewIssuePriority('MEDIUM');
       setNewIssueAssignee('');
       setNewIssueSprint('');
+      setNewIssueDueDate('');
       loadProjectDetail(selectedProjectId);
       showToast('Task created successfully', 'success');
     } catch (err) {
@@ -589,7 +606,8 @@ export default function App() {
           description: editIssueDesc,
           priority: editIssuePriority,
           assigneeId: editIssueAssignee || null,
-          sprintId: editIssueSprint || null
+          sprintId: editIssueSprint || null,
+          dueDate: editIssueDueDate || null
         })
       });
       
@@ -886,6 +904,14 @@ export default function App() {
             <img src={user.imageUrl} alt={user.name} className="user-avatar" />
             <span className="user-name">{user.name}</span>
           </div>
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')} 
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            style={{ padding: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
           <button className="btn btn-secondary" onClick={handleLogout} title="Log Out">
             <LogOut size={16} />
           </button>
@@ -987,6 +1013,81 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* --- AI WORKLOAD COACH PANEL --- */}
+            <div className="ai-coach-section" style={{ background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%)', border: '1px solid rgba(14, 165, 233, 0.2)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', marginBottom: '2rem', boxShadow: 'var(--shadow-premium)', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '-10px', right: '-10px', opacity: 0.1, pointerEvents: 'none' }}>
+                <Sparkles size={120} color="var(--primary)" />
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <Sparkles size={18} style={{ color: '#f59e0b' }} /> ✨ AI Workload & Deadline Coach
+              </h3>
+              
+              {(() => {
+                const recommendations = [];
+
+                projects.forEach(p => {
+                  const st = p.stats || { TODO: 0, IN_PROGRESS: 0, IN_REVIEW: 0, DONE: 0 };
+                  const unresolved = (st.TODO || 0) + (st.IN_PROGRESS || 0) + (st.IN_REVIEW || 0);
+                  const total = unresolved + (st.DONE || 0);
+                  const completionRate = total > 0 ? Math.round((st.DONE / total) * 100) : 0;
+
+                  if (unresolved > 4) {
+                    recommendations.push({
+                      type: 'warning',
+                      text: `High Workload Alert on project "${p.name}": There are ${unresolved} active unresolved tasks. Consider assigning them to other team members or splitting phases.`,
+                      project: p
+                    });
+                  }
+
+                  const sp = p.sprints || { PLANNED: 0, ACTIVE: 0, COMPLETED: 0 };
+                  if (sp.PLANNED > 0 && sp.ACTIVE === 0) {
+                    recommendations.push({
+                      type: 'info',
+                      text: `Schedule Optimization: "${p.name}" has planned phases but no active phase running. Start a phase to boost team momentum.`,
+                      project: p
+                    });
+                  }
+
+                  if (completionRate >= 60 && completionRate < 100 && unresolved > 0) {
+                    recommendations.push({
+                      type: 'success',
+                      text: `Boost Velocity: "${p.name}" is ${completionRate}% complete! Prioritize the remaining ${unresolved} task(s) to close this development cycle.`,
+                      project: p
+                    });
+                  }
+                });
+
+                if (recommendations.length === 0) {
+                  return (
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0, fontStyle: 'italic' }}>
+                      Everything looks balanced! Workloads are optimal, and no immediate schedule adjustments are needed. Keep it up!
+                    </p>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    {recommendations.map((rec, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '0.8rem', background: 'rgba(255,255,255,0.03)', padding: '0.8rem 1rem', borderRadius: 'var(--radius-sm)', borderLeft: `4px solid ${rec.type === 'warning' ? '#ef4444' : rec.type === 'success' ? '#10b981' : '#0ea5e9'}`, alignItems: 'flex-start' }}>
+                        <div style={{ fontSize: '1.1rem', marginTop: '-2px' }}>
+                          {rec.type === 'warning' ? '⚠️' : rec.type === 'success' ? '🎯' : '💡'}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: 0, lineHeight: '1.4' }}>{rec.text}</p>
+                          <span 
+                            style={{ fontSize: '0.75rem', color: 'var(--text-muted)', cursor: 'pointer', textDecoration: 'underline', marginTop: '0.3rem', display: 'inline-block' }}
+                            onClick={() => { setSelectedProjectId(rec.project.id); setActiveView('board'); }}
+                          >
+                            Go to Project Board &rarr;
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 );
               })()}
@@ -1293,7 +1394,23 @@ export default function App() {
                     );
                   })()}
                 </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{ display: 'flex', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                    <button 
+                      className={`btn ${boardViewMode === 'kanban' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '0.4rem 0.8rem', borderRadius: 0, fontSize: '0.85rem' }}
+                      onClick={() => setBoardViewMode('kanban')}
+                    >
+                      Kanban
+                    </button>
+                    <button 
+                      className={`btn ${boardViewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '0.4rem 0.8rem', borderRadius: 0, fontSize: '0.85rem' }}
+                      onClick={() => setBoardViewMode('calendar')}
+                    >
+                      Calendar
+                    </button>
+                  </div>
                   <button className="btn btn-secondary" onClick={() => setShowNewSprintModal(true)}>
                     <Calendar size={16} /> Add Phase
                   </button>
@@ -1399,87 +1516,219 @@ export default function App() {
                 </div>
               )}
 
-              {/* KANBAN BOARD */}
-              <div className="board-columns">
-                {['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'].map(status => {
-                  const filteredIssues = (projectDetail.issues || []).filter(i => {
-                    // 1. Status check
-                    if (i.status !== status) return false;
-                    
-                    // 2. Sprint check
-                    if (selectedSprintFilter === 'backlog') {
-                      if (i.sprintId) return false;
-                    } else if (selectedSprintFilter !== 'all') {
-                      if (i.sprintId !== selectedSprintFilter) return false;
-                    }
-                    
-                    // 3. Priority check
-                    if (selectedPriorityFilter !== 'ALL') {
-                      if (i.priority !== selectedPriorityFilter) return false;
-                    }
-                    
-                    // 4. Search check (title matching query)
-                    if (searchQuery.trim()) {
-                      const query = searchQuery.toLowerCase();
-                      const matchTitle = i.title.toLowerCase().includes(query);
-                      const matchDesc = (i.description || '').toLowerCase().includes(query);
-                      if (!matchTitle && !matchDesc) return false;
-                    }
-                    
-                    return true;
-                  });
-                  return (
-                    <div 
-                      key={status} 
-                      className="board-col"
-                      onDragOver={e => handleDragOver(e, status)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={e => handleDrop(e, status)}
-                    >
-                      <div className="col-header">
-                        <span className="col-title">{status.replace('_', ' ')}</span>
-                        <span className="col-count">{filteredIssues.length}</span>
+              {/* KANBAN OR CALENDAR BOARD */}
+              {boardViewMode === 'kanban' ? (
+                <div className="board-columns">
+                  {['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'].map(status => {
+                    const filteredIssues = (projectDetail.issues || []).filter(i => {
+                      if (i.status !== status) return false;
+                      if (selectedSprintFilter === 'backlog') {
+                        if (i.sprintId) return false;
+                      } else if (selectedSprintFilter !== 'all') {
+                        if (i.sprintId !== selectedSprintFilter) return false;
+                      }
+                      if (selectedPriorityFilter !== 'ALL') {
+                        if (i.priority !== selectedPriorityFilter) return false;
+                      }
+                      if (searchQuery.trim()) {
+                        const query = searchQuery.toLowerCase();
+                        const matchTitle = i.title.toLowerCase().includes(query);
+                        const matchDesc = (i.description || '').toLowerCase().includes(query);
+                        if (!matchTitle && !matchDesc) return false;
+                      }
+                      return true;
+                    });
+                    return (
+                      <div 
+                        key={status} 
+                        className="board-col"
+                        onDragOver={e => handleDragOver(e, status)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={e => handleDrop(e, status)}
+                      >
+                        <div className="col-header">
+                          <span className="col-title">{status.replace('_', ' ')}</span>
+                          <span className="col-count">{filteredIssues.length}</span>
+                        </div>
+                        <div className={`col-cards ${dragOverCol === status ? 'drag-over' : ''}`}>
+                          {boardLoading ? (
+                            <>
+                              <div className="skeleton-card animate-pulse" />
+                              <div className="skeleton-card animate-pulse" />
+                            </>
+                          ) : (
+                            filteredIssues.map(issue => (
+                              <div 
+                                key={issue.id} 
+                                className="card-item"
+                                draggable
+                                onDragStart={e => handleDragStart(e, issue.id)}
+                                onDragOver={handleDragOverCard}
+                                onDrop={e => handleDropOnCard(e, issue)}
+                                onClick={() => { 
+                                  setSelectedIssue(issue); 
+                                  setEditIssueTitle(issue.title);
+                                  setEditIssueDesc(issue.description || '');
+                                  setEditIssuePriority(issue.priority);
+                                  setEditIssueAssignee(issue.assigneeId || '');
+                                  setEditIssueSprint(issue.sprintId || '');
+                                  setEditIssueDueDate(issue.dueDate ? issue.dueDate.substring(0, 10) : '');
+                                  setIsEditingIssue(false);
+                                  setShowIssueDetailModal(true); 
+                                }}
+                              >
+                                <h4 className="card-title">{issue.title}</h4>
+                                <div className="card-footer">
+                                  <span className={`priority-tag ${issue.priority.toLowerCase()}`}>
+                                    {issue.priority}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
-                      <div className={`col-cards ${dragOverCol === status ? 'drag-over' : ''}`}>
-                        {boardLoading ? (
-                          <>
-                            <div className="skeleton-card animate-pulse" />
-                            <div className="skeleton-card animate-pulse" />
-                          </>
-                        ) : (
-                          filteredIssues.map(issue => (
+                    );
+                  })}
+                </div>
+              ) : (
+                (() => {
+                  const year = calendarMonth.getFullYear();
+                  const month = calendarMonth.getMonth();
+                  const firstDayIndex = new Date(year, month, 1).getDay();
+                  const totalDays = new Date(year, month + 1, 0).getDate();
+                  
+                  const dayCells = [];
+                  for (let i = 0; i < firstDayIndex; i++) {
+                    dayCells.push(null);
+                  }
+                  for (let day = 1; day <= totalDays; day++) {
+                    dayCells.push(new Date(year, month, day));
+                  }
+
+                  return (
+                    <div className="calendar-view-container" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', boxShadow: 'var(--shadow-premium)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700' }}>
+                          {calendarMonth.toLocaleString('default', { month: 'long' })} {year}
+                        </h3>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            className="btn btn-secondary" 
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                            onClick={() => setCalendarMonth(new Date(year, month - 1, 1))}
+                          >
+                            &larr; Previous
+                          </button>
+                          <button 
+                            className="btn btn-secondary" 
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                            onClick={() => setCalendarMonth(new Date())}
+                          >
+                            Today
+                          </button>
+                          <button 
+                            className="btn btn-secondary" 
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                            onClick={() => setCalendarMonth(new Date(year, month + 1, 1))}
+                          >
+                            Next &rarr;
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center', fontWeight: '600', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                          <div key={day} style={{ padding: '0.5rem 0' }}>{day}</div>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', minHeight: '360px' }}>
+                        {dayCells.map((date, idx) => {
+                          if (!date) {
+                            return <div key={`empty-${idx}`} style={{ background: 'rgba(255,255,255,0.01)', borderRadius: 'var(--radius-sm)', border: '1px solid transparent' }} />;
+                          }
+
+                          const isToday = new Date().toDateString() === date.toDateString();
+                          const dayTasks = (projectDetail.issues || []).filter(issue => {
+                            if (!issue.dueDate) return false;
+                            const issueDate = new Date(issue.dueDate);
+                            return issueDate.getFullYear() === date.getFullYear() &&
+                                   issueDate.getMonth() === date.getMonth() &&
+                                   issueDate.getDate() === date.getDate();
+                          });
+
+                          return (
                             <div 
-                              key={issue.id} 
-                              className="card-item"
-                              draggable
-                              onDragStart={e => handleDragStart(e, issue.id)}
-                              onDragOver={handleDragOverCard}
-                              onDrop={e => handleDropOnCard(e, issue)}
-                              onClick={() => { 
-                                setSelectedIssue(issue); 
-                                setEditIssueTitle(issue.title);
-                                setEditIssueDesc(issue.description || '');
-                                setEditIssuePriority(issue.priority);
-                                setEditIssueAssignee(issue.assigneeId || '');
-                                setEditIssueSprint(issue.sprintId || '');
-                                setIsEditingIssue(false);
-                                setShowIssueDetailModal(true); 
+                              key={date.toISOString()} 
+                              style={{ 
+                                background: isToday ? 'rgba(14, 165, 233, 0.05)' : 'rgba(255,255,255,0.02)', 
+                                border: isToday ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                borderRadius: 'var(--radius-sm)',
+                                padding: '0.6rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                minHeight: '80px',
+                                transition: 'all 0.2s',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => {
+                                setNewIssueDueDate(date.toISOString().substring(0, 10));
+                                setShowNewIssueModal(true);
                               }}
                             >
-                              <h4 className="card-title">{issue.title}</h4>
-                              <div className="card-footer">
-                                <span className={`priority-tag ${issue.priority.toLowerCase()}`}>
-                                  {issue.priority}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                <span style={{ fontSize: '0.8rem', fontWeight: isToday ? '700' : '500', color: isToday ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                                  {date.getDate()}
                                 </span>
+                                {dayTasks.length > 0 && (
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                    {dayTasks.length} task{dayTasks.length > 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', overflowY: 'auto', flex: 1, maxHeight: '80px' }}>
+                                {dayTasks.map(issue => (
+                                  <div 
+                                    key={issue.id} 
+                                    style={{ 
+                                      fontSize: '0.75rem', 
+                                      padding: '0.2rem 0.4rem', 
+                                      borderRadius: '3px', 
+                                      background: issue.priority === 'URGENT' ? 'rgba(239, 68, 68, 0.15)' : issue.priority === 'HIGH' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255,255,255,0.05)',
+                                      color: issue.priority === 'URGENT' ? 'var(--danger)' : issue.priority === 'HIGH' ? 'var(--warning)' : 'var(--text-primary)',
+                                      borderLeft: `3px solid ${issue.priority === 'URGENT' ? 'var(--danger)' : issue.priority === 'HIGH' ? 'var(--warning)' : 'var(--text-secondary)'}`,
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedIssue(issue);
+                                      setEditIssueTitle(issue.title);
+                                      setEditIssueDesc(issue.description || '');
+                                      setEditIssuePriority(issue.priority);
+                                      setEditIssueAssignee(issue.assigneeId || '');
+                                      setEditIssueSprint(issue.sprintId || '');
+                                      setEditIssueDueDate(issue.dueDate ? issue.dueDate.substring(0, 10) : '');
+                                      setIsEditingIssue(false);
+                                      setShowIssueDetailModal(true);
+                                    }}
+                                    title={`${issue.title} (${issue.priority})`}
+                                  >
+                                    {issue.title}
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                          ))
-                        )}
+                          );
+                        })}
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                })()
+              )}
             </div>
           )
         )}
@@ -1612,6 +1861,15 @@ export default function App() {
                 ))}
               </select>
             </div>
+            <div className="form-group">
+              <label>Due Date / Deadline</label>
+              <input 
+                type="date" 
+                className="form-control" 
+                value={newIssueDueDate}
+                onChange={e => setNewIssueDueDate(e.target.value)}
+              />
+            </div>
             <div className="form-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setShowNewIssueModal(false)}>Cancel</button>
               <button type="submit" className="btn btn-primary">Create</button>
@@ -1675,6 +1933,16 @@ export default function App() {
                           <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Due Date</h5>
+                      <input 
+                        type="date" 
+                        className="form-control" 
+                        value={editIssueDueDate} 
+                        onChange={e => setEditIssueDueDate(e.target.value)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1761,6 +2029,12 @@ export default function App() {
                       </span>
                     </div>
 
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Due Date</h5>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        {selectedIssue.dueDate ? new Date(selectedIssue.dueDate).toLocaleDateString() : 'No deadline set'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

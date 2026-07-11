@@ -699,3 +699,54 @@ main.app-main {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- LIGHT MODE & CALENDAR STYLING --- */
+:root {
+  --card-bg: rgba(30, 41, 59, 0.7);
+}
+
+body.light-mode {
+  --bg-gradient: radial-gradient(circle at 10% 20%, rgb(248, 250, 252) 0%, rgb(241, 245, 249) 90%);
+  --bg-surface: rgba(255, 255, 255, 0.9);
+  --bg-surface-hover: rgba(255, 255, 255, 1);
+  --border-color: rgba(0, 0, 0, 0.08);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --card-bg: rgba(255, 255, 255, 0.95);
+}
+
+/* Override light mode styles */
+body.light-mode input.form-control,
+body.light-mode select.form-control,
+body.light-mode textarea.form-control {
+  background: rgb(255, 255, 255);
+  color: #0f172a;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+body.light-mode .project-card,
+body.light-mode .widget-card,
+body.light-mode .board-col,
+body.light-mode .card-item,
+body.light-mode .modal-content,
+body.light-mode .sprint-section {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+
+body.light-mode .card-title {
+  color: #0f172a;
+}
+
+body.light-mode .card-item:hover {
+  border-color: var(--primary);
+  background: rgba(14, 165, 233, 0.02);
+}
+
+body.light-mode .tour-tooltip {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: var(--primary);
+}

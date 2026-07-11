@@ -5,7 +5,7 @@ const { authenticateToken } = require('./auth');
 
 // POST /api/issues - Create a new issue
 router.post('/', authenticateToken, async (req, res) => {
-  const { title, description, status, priority, assigneeId, projectId, sprintId } = req.body;
+  const { title, description, status, priority, assigneeId, projectId, sprintId, dueDate } = req.body;
   
   if (!title || !status || !priority || !projectId) {
     return res.status(400).json({ error: 'Title, status, priority, and projectId are required' });
@@ -17,14 +17,14 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     // Determine the next order index for this status in this project
     const result = await db.query(
-      'SELECT COALESCE(MAX(\`order\`), -1) + 1 AS nextOrder FROM issues WHERE projectId = ? AND status = ?',
+      'SELECT COALESCE(MAX(`order`), -1) + 1 AS nextOrder FROM issues WHERE projectId = ? AND status = ?',
       [projectId, status]
     );
     const order = result[0].nextOrder;
 
     await db.query(
-      'INSERT INTO issues (id, title, description, status, \`order\`, priority, assigneeId, reporterId, projectId, sprintId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, title, description || null, status, order, priority, assigneeId || null, reporterId, projectId, sprintId || null]
+      'INSERT INTO issues (id, title, description, status, `order`, priority, assigneeId, reporterId, projectId, sprintId, dueDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, title, description || null, status, order, priority, assigneeId || null, reporterId, projectId, sprintId || null, dueDate || null]
     );
 
     // Fetch the created issue with user details
@@ -99,7 +99,7 @@ router.patch('/reorder', authenticateToken, async (req, res) => {
 // PATCH /api/issues/:id - Update individual issue fields
 router.patch('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { title, description, status, priority, assigneeId, sprintId } = req.body;
+  const { title, description, status, priority, assigneeId, sprintId, dueDate } = req.body;
 
   try {
     // Build dynamic UPDATE query
@@ -112,6 +112,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
     if (priority !== undefined) { updates.push('priority = ?'); params.push(priority); }
     if (assigneeId !== undefined) { updates.push('assigneeId = ?'); params.push(assigneeId || null); }
     if (sprintId !== undefined) { updates.push('sprintId = ?'); params.push(sprintId || null); }
+    if (dueDate !== undefined) { updates.push('dueDate = ?'); params.push(dueDate || null); }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
