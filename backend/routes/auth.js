@@ -32,32 +32,57 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/auth/login (mock login/onboarding)
-router.post('/login', async (req, res) => {
-  const { email, name, imageUrl } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email is required' });
+// POST /api/auth/register - Sign up a new user
+router.post('/register', async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'Name, email, and password are required' });
+  }
 
   try {
-    // Find or create user
-    let users = await db.query('SELECT id, name, email, imageUrl FROM users WHERE email = ?', [email]);
-    let user;
-
-    if (users.length === 0) {
-      const id = 'user_' + Date.now();
-      const userName = name || email.split('@')[0];
-      const img = imageUrl || 'https://avatar.iran.liara.run/public/girl';
-      await db.query(
-        'INSERT INTO users (id, name, email, imageUrl) VALUES (?, ?, ?, ?)',
-        [id, userName, email, img]
-      );
-      user = { id, name: userName, email, imageUrl: img };
-    } else {
-      user = users[0];
+    const existing = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Email already registered' });
     }
 
-    // Generate JWT token
+    const id = 'user_' + Date.now();
+    const img = 'https://avatar.iran.liara.run/public/girl';
+    await db.query(
+      'INSERT INTO users (id, name, email, imageUrl, password) VALUES (?, ?, ?, ?, ?)',
+      [id, name, email, img, password]
+    );
+
+    const user = { id, name, email, imageUrl: img };
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user });
+    res.status(201).json({ token, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/login - Log in with email and password
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  try {
+    const users = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    if (users.length === 0) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    const user = users[0];
+    if (user.password !== password) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, imageUrl: user.imageUrl }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

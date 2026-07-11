@@ -30,6 +30,8 @@ export default function App() {
   // Form states
   const [loginEmail, setLoginEmail] = useState('');
   const [loginName, setLoginName] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   
   const [showNewProjModal, setShowNewProjModal] = useState(false);
   const [newProjName, setNewProjName] = useState('');
@@ -354,18 +356,28 @@ export default function App() {
   // Auth Handlers
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!loginEmail) return;
+    if (!loginEmail || !loginPassword) return;
+    if (authMode === 'register' && !loginName) {
+      showToast('Name is required for registration', 'warning');
+      return;
+    }
     setLoading(true);
     try {
-      const data = await fetchApi('/auth/login', {
+      const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const body = authMode === 'login' 
+        ? { email: loginEmail, password: loginPassword }
+        : { email: loginEmail, name: loginName, password: loginPassword };
+
+      const data = await fetchApi(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ email: loginEmail, name: loginName })
+        body: JSON.stringify(body)
       });
       localStorage.setItem('token', data.token);
       setToken(data.token);
       setUser(data.user);
+      showToast(authMode === 'login' ? 'Logged in successfully' : 'Account created', 'success');
     } catch (err) {
-      showToast('Login failed: ' + err.message, 'danger');
+      showToast((authMode === 'login' ? 'Login failed: ' : 'Registration failed: ') + err.message, 'danger');
     } finally {
       setLoading(false);
     }
@@ -639,15 +651,20 @@ export default function App() {
         <form className="login-card" onSubmit={handleLogin}>
           <h2>Arbeit Tasks</h2>
           <p>Manage tasks, boards, and team productivity in real-time.</p>
-          <div className="form-group">
-            <input 
-              type="text" 
-              placeholder="Your Name (Optional)" 
-              className="form-control"
-              value={loginName}
-              onChange={e => setLoginName(e.target.value)}
-            />
-          </div>
+          
+          {authMode === 'register' && (
+            <div className="form-group">
+              <input 
+                type="text" 
+                placeholder="Full Name" 
+                className="form-control"
+                value={loginName}
+                onChange={e => setLoginName(e.target.value)}
+                required
+              />
+            </div>
+          )}
+          
           <div className="form-group">
             <input 
               type="email" 
@@ -658,9 +675,45 @@ export default function App() {
               required
             />
           </div>
+
+          <div className="form-group">
+            <input 
+              type="password" 
+              placeholder="Password" 
+              className="form-control"
+              value={loginPassword}
+              onChange={e => setLoginPassword(e.target.value)}
+              required
+            />
+          </div>
+
           <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-            Get Started
+            {authMode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
+
+          <p style={{ marginTop: '1.5rem', fontSize: '0.85rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            {authMode === 'login' ? (
+              <>
+                Don't have an account?{' '}
+                <span 
+                  style={{ color: 'var(--primary)', cursor: 'pointer', textDecoration: 'underline' }}
+                  onClick={() => setAuthMode('register')}
+                >
+                  Sign Up
+                </span>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <span 
+                  style={{ color: 'var(--primary)', cursor: 'pointer', textDecoration: 'underline' }}
+                  onClick={() => setAuthMode('login')}
+                >
+                  Log In
+                </span>
+              </>
+            )}
+          </p>
         </form>
       </div>
     );
