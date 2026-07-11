@@ -1180,15 +1180,6 @@ export default function App() {
                                 <span className={`priority-tag ${issue.priority.toLowerCase()}`}>
                                   {issue.priority}
                                 </span>
-                                {issue.assigneeImageUrl && (
-                                  <img 
-                                    src={issue.assigneeImageUrl} 
-                                    alt={issue.assigneeName} 
-                                    className="user-avatar" 
-                                    style={{ width: 24, height: 24 }}
-                                    title={`Assigned to ${issue.assigneeName}`}
-                                  />
-                                )}
                               </div>
                             </div>
                           ))
@@ -1316,19 +1307,7 @@ export default function App() {
                 <option value="URGENT">Urgent</option>
               </select>
             </div>
-            <div className="form-group">
-              <label>Assignee</label>
-              <select 
-                className="form-control" 
-                value={newIssueAssignee}
-                onChange={e => setNewIssueAssignee(e.target.value)}
-              >
-                <option value="">Unassigned</option>
-                {usersList.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                ))}
-              </select>
-            </div>
+
             <div className="form-group">
               <label>Phase (Optional)</label>
               <select 
@@ -1392,19 +1371,7 @@ export default function App() {
                         <option value="URGENT">Urgent</option>
                       </select>
                     </div>
-                    <div>
-                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Assignee</h5>
-                      <select 
-                        className="form-control" 
-                        value={editIssueAssignee} 
-                        onChange={e => setEditIssueAssignee(e.target.value)}
-                      >
-                        <option value="">Unassigned</option>
-                        {usersList.map(u => (
-                          <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                        ))}
-                      </select>
-                    </div>
+
                     <div>
                       <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Phase</h5>
                       <select 
@@ -1502,26 +1469,7 @@ export default function App() {
                         {selectedIssue.priority}
                       </span>
                     </div>
-                    <div>
-                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Assignee</h5>
-                      <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                        {selectedIssue.assigneeImageUrl ? (
-                          <>
-                            <img src={selectedIssue.assigneeImageUrl} className="user-avatar" style={{ width: 24, height: 24 }} alt="" />
-                            <span>{selectedIssue.assigneeName}</span>
-                          </>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Reporter</h5>
-                      <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                        <img src={selectedIssue.reporterImageUrl || 'https://avatar.iran.liara.run/public/girl'} className="user-avatar" style={{ width: 24, height: 24 }} alt="" />
-                        <span>{selectedIssue.reporterName}</span>
-                      </p>
-                    </div>
+
                   </div>
                 </div>
 
