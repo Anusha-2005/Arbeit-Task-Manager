@@ -1,0 +1,59 @@
+CREATE DATABASE IF NOT EXISTS neondb;
+USE neondb;
+
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(36) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  imageUrl VARCHAR(255),
+  password VARCHAR(255),
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id VARCHAR(36) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  `key` VARCHAR(50) NOT NULL,
+  description TEXT,
+  organizationId VARCHAR(255) NOT NULL,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_org_key (organizationId, `key`)
+);
+
+CREATE TABLE IF NOT EXISTS sprints (
+  id VARCHAR(36) PRIMARY KEY,
+  name VARCHAR(255) UNIQUE NOT NULL,
+  startDate DATETIME NOT NULL,
+  endDate DATETIME NOT NULL,
+  status ENUM('PLANNED', 'ACTIVE', 'COMPLETED') DEFAULT 'PLANNED',
+  projectId VARCHAR(36) NOT NULL,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (projectId) REFERENCES projects (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS issues (
+  id VARCHAR(36) PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  status ENUM('TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE') NOT NULL,
+  `order` INT NOT NULL,
+  priority ENUM('LOW', 'MEDIUM', 'HIGH', 'URGENT') NOT NULL,
+  assigneeId VARCHAR(36),
+  reporterId VARCHAR(36) NOT NULL,
+  projectId VARCHAR(36) NOT NULL,
+  sprintId VARCHAR(36),
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (assigneeId) REFERENCES users (id) ON DELETE SET NULL,
+  FOREIGN KEY (reporterId) REFERENCES users (id),
+  FOREIGN KEY (projectId) REFERENCES projects (id) ON DELETE CASCADE,
+  FOREIGN KEY (sprintId) REFERENCES sprints (id) ON DELETE SET NULL
+);
+
+-- Insert a default user for local development and testing
+INSERT INTO users (id, name, email, imageUrl, password)
+VALUES ('user_default', 'Anusha', 'anurama013@gmail.com', 'https://avatar.iran.liara.run/public/girl', 'password123')
+ON DUPLICATE KEY UPDATE name=name;
