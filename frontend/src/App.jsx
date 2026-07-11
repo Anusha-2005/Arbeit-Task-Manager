@@ -33,6 +33,11 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   
+  // Profile editing states
+  const [profileName, setProfileName] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState('');
+  const [profilePassword, setProfilePassword] = useState('');
+  
   const [showNewProjModal, setShowNewProjModal] = useState(false);
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
@@ -396,6 +401,32 @@ export default function App() {
     setProjectDetail(null);
     setSelectedProjectId(null);
     setActiveView('dashboard');
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    if (!profileName.trim()) {
+      showToast('Name cannot be blank', 'warning');
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await fetchApi('/users/profile', {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: profileName,
+          imageUrl: profileAvatar,
+          password: profilePassword || undefined
+        })
+      });
+      setUser(data.user);
+      showToast('Profile updated successfully', 'success');
+      setActiveView('dashboard');
+    } catch (err) {
+      showToast('Failed to update profile: ' + err.message, 'danger');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Create Project
@@ -839,7 +870,18 @@ export default function App() {
             )}
           </div>
 
-          <div className="user-profile">
+          <div 
+            className="user-profile" 
+            style={{ cursor: 'pointer' }}
+            onClick={() => {
+              setProfileName(user.name);
+              setProfileAvatar(user.imageUrl || '');
+              setProfilePassword('');
+              setActiveView('profile');
+              setSelectedProjectId(null);
+            }}
+            title="View Profile"
+          >
             <img src={user.imageUrl} alt={user.name} className="user-avatar" />
             <span className="user-name">{user.name}</span>
           </div>
@@ -979,6 +1021,89 @@ export default function App() {
                 </div>
               )}
             </div>
+          </div>
+        ) : activeView === 'profile' ? (
+          // --- PROFILE VIEW ---
+          <div style={{ maxWidth: '600px', margin: '2rem auto', padding: '2rem', background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-premium)' }}>
+            <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: '700', background: 'linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>My Profile</h2>
+            
+            <form onSubmit={handleUpdateProfile}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+                <img 
+                  src={profileAvatar || 'https://avatar.iran.liara.run/public/girl'} 
+                  alt="Profile Avatar" 
+                  style={{ width: '80px', height: '80px', borderRadius: '50%', border: '3px solid var(--primary)', objectFit: 'cover' }} 
+                />
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {['girl', 'boy', 'avatar1', 'avatar2'].map((preset) => {
+                    const presetUrl = `https://avatar.iran.liara.run/public/${preset === 'girl' ? 'girl' : preset === 'boy' ? 'boy' : preset === 'avatar1' ? '45' : '72'}`;
+                    return (
+                      <button 
+                        key={preset}
+                        type="button" 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', border: profileAvatar === presetUrl ? '1px solid var(--primary)' : '1px solid transparent' }}
+                        onClick={() => setProfileAvatar(presetUrl)}
+                      >
+                        {preset.toUpperCase()}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Email Address (Cannot be changed)</label>
+                <input 
+                  type="email" 
+                  className="form-control" 
+                  value={user.email} 
+                  disabled 
+                  style={{ opacity: 0.6, cursor: 'not-allowed' }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Full Name</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={profileName} 
+                  onChange={e => setProfileName(e.target.value)} 
+                  required 
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Profile Image URL</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={profileAvatar} 
+                  onChange={e => setProfileAvatar(e.target.value)} 
+                />
+              </div>
+
+              <div className="form-group">
+                <label>New Password (Leave blank to keep unchanged)</label>
+                <input 
+                  type="password" 
+                  className="form-control" 
+                  placeholder="••••••••" 
+                  value={profilePassword} 
+                  onChange={e => setProfilePassword(e.target.value)} 
+                />
+              </div>
+
+              <div className="form-actions" style={{ marginTop: '2rem' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setActiveView('dashboard')}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save Profile
+                </button>
+              </div>
+            </form>
           </div>
         ) : (
           // --- BOARD VIEW ---
