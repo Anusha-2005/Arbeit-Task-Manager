@@ -3,9 +3,26 @@ const router = express.Router();
 const db = require('../config/db');
 const { authenticateToken } = require('./auth');
 
+// GET /api/issues/assigned - Get all unresolved issues assigned to the logged-in user
+router.get('/assigned', authenticateToken, async (req, res) => {
+  try {
+    const issues = await db.query(
+      `SELECT i.*, p.name AS projectName, p.key AS projectKey
+       FROM issues i
+       JOIN projects p ON i.projectId = p.id
+       WHERE i.assigneeId = ? AND i.status != 'DONE'
+       ORDER BY i.priority DESC`,
+      [req.user.id]
+    );
+    res.json(issues);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/issues - Create a new issue
 router.post('/', authenticateToken, async (req, res) => {
-  const { title, description, status, priority, assigneeId, projectId, sprintId, dueDate } = req.body;
+  const { title, description, status, priority, assigneeId, projectId, sprintId, dueDate, estimatedEffort } = req.body;
   
   if (!title || !status || !priority || !projectId) {
     return res.status(400).json({ error: 'Title, status, priority, and projectId are required' });
@@ -23,8 +40,8 @@ router.post('/', authenticateToken, async (req, res) => {
     const order = result[0].nextOrder;
 
     await db.query(
-      'INSERT INTO issues (id, title, description, status, `order`, priority, assigneeId, reporterId, projectId, sprintId, dueDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, title, description || null, status, order, priority, assigneeId || null, reporterId, projectId, sprintId || null, dueDate || null]
+      'INSERT INTO issues (id, title, description, status, `order`, priority, assigneeId, reporterId, projectId, sprintId, dueDate, estimatedEffort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, title, description || null, status, order, priority, assigneeId || null, reporterId, projectId, sprintId || null, dueDate || null, estimatedEffort !== undefined ? parseInt(estimatedEffort) : 1]
     );
 
     // Fetch the created issue with user details
@@ -99,7 +116,7 @@ router.patch('/reorder', authenticateToken, async (req, res) => {
 // PATCH /api/issues/:id - Update individual issue fields
 router.patch('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { title, description, status, priority, assigneeId, sprintId, dueDate } = req.body;
+  const { title, description, status, priority, assigneeId, sprintId, dueDate, estimatedEffort } = req.body;
 
   try {
     // Build dynamic UPDATE query
@@ -113,6 +130,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
     if (assigneeId !== undefined) { updates.push('assigneeId = ?'); params.push(assigneeId || null); }
     if (sprintId !== undefined) { updates.push('sprintId = ?'); params.push(sprintId || null); }
     if (dueDate !== undefined) { updates.push('dueDate = ?'); params.push(dueDate || null); }
+    if (estimatedEffort !== undefined) { updates.push('estimatedEffort = ?'); params.push(parseInt(estimatedEffort) || 1); }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });

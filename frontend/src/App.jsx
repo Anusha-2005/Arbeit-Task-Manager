@@ -80,6 +80,9 @@ export default function App() {
   const [editIssueAssignee, setEditIssueAssignee] = useState('');
   const [editIssueSprint, setEditIssueSprint] = useState('');
   const [editIssueDueDate, setEditIssueDueDate] = useState('');
+  const [myAssignedIssues, setMyAssignedIssues] = useState([]);
+  const [newIssueEffort, setNewIssueEffort] = useState(1);
+  const [editIssueEffort, setEditIssueEffort] = useState(1);
 
   // Notifications states
   const [notifications, setNotifications] = useState([]);
@@ -163,12 +166,14 @@ export default function App() {
   // Load projects and users list
   const loadDashboardData = async () => {
     try {
-      const [projData, usersData] = await Promise.all([
+      const [projData, usersData, assignedIssuesData] = await Promise.all([
         fetchApi('/projects'),
-        fetchApi('/users')
+        fetchApi('/users'),
+        fetchApi('/issues/assigned')
       ]);
       setProjects(projData);
       setUsersList(usersData);
+      setMyAssignedIssues(assignedIssuesData);
     } catch (err) {
       showToast('Error loading dashboard: ' + err.message, 'danger');
     }
@@ -516,6 +521,7 @@ export default function App() {
           assigneeId: newIssueAssignee || null,
           sprintId: newIssueSprint || null,
           dueDate: newIssueDueDate || null,
+          estimatedEffort: newIssueEffort,
           projectId: selectedProjectId
         })
       });
@@ -526,6 +532,7 @@ export default function App() {
       setNewIssueAssignee('');
       setNewIssueSprint('');
       setNewIssueDueDate('');
+      setNewIssueEffort(1);
       loadProjectDetail(selectedProjectId);
       showToast('Task created successfully', 'success');
     } catch (err) {
@@ -607,7 +614,8 @@ export default function App() {
           priority: editIssuePriority,
           assigneeId: editIssueAssignee || null,
           sprintId: editIssueSprint || null,
-          dueDate: editIssueDueDate || null
+          dueDate: editIssueDueDate || null,
+          estimatedEffort: editIssueEffort
         })
       });
       
@@ -1023,74 +1031,202 @@ export default function App() {
               <div style={{ position: 'absolute', top: '-10px', right: '-10px', opacity: 0.1, pointerEvents: 'none' }}>
                 <Sparkles size={120} color="var(--primary)" />
               </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '700', marginBottom: '1.2rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <Sparkles size={18} style={{ color: '#f59e0b' }} /> ✨ AI Workload & Deadline Coach
               </h3>
               
-              {(() => {
-                const recommendations = [];
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                
+                {/* PERSONAL TASK RECOMMENDATIONS */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.2rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.8rem', color: 'var(--text-secondary)' }}>
+                    🎯 Your Priority Recommendations
+                  </h4>
+                  {(() => {
+                    if (myAssignedIssues.length === 0) {
+                      return (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+                          No pending tasks assigned to you. Take a task from a project board to begin!
+                        </p>
+                      );
+                    }
 
-                projects.forEach(p => {
-                  const st = p.stats || { TODO: 0, IN_PROGRESS: 0, IN_REVIEW: 0, DONE: 0 };
-                  const unresolved = (st.TODO || 0) + (st.IN_PROGRESS || 0) + (st.IN_REVIEW || 0);
-                  const total = unresolved + (st.DONE || 0);
-                  const completionRate = total > 0 ? Math.round((st.DONE / total) * 100) : 0;
+                    const scoredTasks = myAssignedIssues.map(issue => {
+                      let score = 0;
+                      let deadlineText = '';
+                      let isOverdue = false;
+                      if (issue.dueDate) {
+                        const due = new Date(issue.dueDate);
+                        const now = new Date();
+                        const diffTime = due.getTime() - now.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        
+                        if (diffDays < 0) {
+                          score += 100;
+                          isOverdue = true;
+                          deadlineText = `Overdue by ${Math.abs(diffDays)} day(s)`;
+                        } else if (diffDays === 0) {
+                          score += 90;
+                          deadlineText = 'Due TODAY';
+                        } else if (diffDays === 1) {
+                          score += 80;
+                          deadlineText = 'Due tomorrow';
+                        } else if (diffDays <= 3) {
+                          score += 50;
+                          deadlineText = `Due in ${diffDays} days`;
+                        } else if (diffDays <= 7) {
+                          score += 20;
+                          deadlineText = `Due in ${diffDays} days`;
+                        } else {
+                          score += 5;
+                          deadlineText = `Due in ${diffDays} days`;
+                        }
+                      } else {
+                        deadlineText = 'No deadline set';
+                      }
 
-                  if (unresolved > 4) {
-                    recommendations.push({
-                      type: 'warning',
-                      text: `High Workload Alert on project "${p.name}": There are ${unresolved} active unresolved tasks. Consider assigning them to other team members or splitting phases.`,
-                      project: p
+                      if (issue.priority === 'URGENT') score += 40;
+                      else if (issue.priority === 'HIGH') score += 20;
+                      else if (issue.priority === 'MEDIUM') score += 10;
+                      
+                      if (issue.status === 'IN_PROGRESS') score += 15;
+                      else if (issue.status === 'IN_REVIEW') score += 5;
+                      else if (issue.status === 'TODO') score += 10;
+
+                      const effort = issue.estimatedEffort || 1;
+                      score += (5 / effort); 
+
+                      return { ...issue, score, deadlineText, isOverdue };
                     });
-                  }
 
-                  const sp = p.sprints || { PLANNED: 0, ACTIVE: 0, COMPLETED: 0 };
-                  if (sp.PLANNED > 0 && sp.ACTIVE === 0) {
-                    recommendations.push({
-                      type: 'info',
-                      text: `Schedule Optimization: "${p.name}" has planned phases but no active phase running. Start a phase to boost team momentum.`,
-                      project: p
-                    });
-                  }
+                    scoredTasks.sort((a, b) => b.score - a.score);
+                    const topTask = scoredTasks[0];
+                    const runnerUps = scoredTasks.slice(1, 4);
 
-                  if (completionRate >= 60 && completionRate < 100 && unresolved > 0) {
-                    recommendations.push({
-                      type: 'success',
-                      text: `Boost Velocity: "${p.name}" is ${completionRate}% complete! Prioritize the remaining ${unresolved} task(s) to close this development cycle.`,
-                      project: p
-                    });
-                  }
-                });
-
-                if (recommendations.length === 0) {
-                  return (
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0, fontStyle: 'italic' }}>
-                      Everything looks balanced! Workloads are optimal, and no immediate schedule adjustments are needed. Keep it up!
-                    </p>
-                  );
-                }
-
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                    {recommendations.map((rec, i) => (
-                      <div key={i} style={{ display: 'flex', gap: '0.8rem', background: 'rgba(255,255,255,0.03)', padding: '0.8rem 1rem', borderRadius: 'var(--radius-sm)', borderLeft: `4px solid ${rec.type === 'warning' ? '#ef4444' : rec.type === 'success' ? '#10b981' : '#0ea5e9'}`, alignItems: 'flex-start' }}>
-                        <div style={{ fontSize: '1.1rem', marginTop: '-2px' }}>
-                          {rec.type === 'warning' ? '⚠️' : rec.type === 'success' ? '🎯' : '💡'}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: 0, lineHeight: '1.4' }}>{rec.text}</p>
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ background: 'rgba(14, 165, 233, 0.05)', border: '1px solid rgba(14, 165, 233, 0.15)', borderRadius: 'var(--radius-sm)', padding: '0.8rem 1rem' }}>
+                          <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--primary)', fontWeight: '700', letterSpacing: '0.05em' }}>
+                            🏆 Recommended Next Action
+                          </span>
+                          <h5 style={{ fontSize: '0.95rem', fontWeight: '600', margin: '0.2rem 0 0.4rem 0', color: 'var(--text-primary)' }}>
+                            {topTask.title} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({topTask.projectKey})</span>
+                          </h5>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.4' }}>
+                            Why? This is an <strong>{topTask.priority}</strong> priority task in <strong>{topTask.status.replace('_', ' ')}</strong> status, marked as <strong>{topTask.deadlineText}</strong> (Effort: {topTask.estimatedEffort || 1} story points).
+                          </p>
                           <span 
-                            style={{ fontSize: '0.75rem', color: 'var(--text-muted)', cursor: 'pointer', textDecoration: 'underline', marginTop: '0.3rem', display: 'inline-block' }}
-                            onClick={() => { setSelectedProjectId(rec.project.id); setActiveView('board'); }}
+                            style={{ fontSize: '0.75rem', color: 'var(--primary)', cursor: 'pointer', textDecoration: 'underline', marginTop: '0.4rem', display: 'inline-block' }}
+                            onClick={() => { setSelectedProjectId(topTask.projectId); setActiveView('board'); }}
                           >
-                            Go to Project Board &rarr;
+                            Jump to board &rarr;
                           </span>
                         </div>
+
+                        {runnerUps.length > 0 && (
+                          <div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '0.4rem' }}>
+                              Next in Queue:
+                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              {runnerUps.map((t, idx) => (
+                                <div 
+                                  key={t.id} 
+                                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.01)', padding: '0.4rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.02)', fontSize: '0.8rem', cursor: 'pointer' }}
+                                  onClick={() => { setSelectedProjectId(t.projectId); setActiveView('board'); }}
+                                >
+                                  <span style={{ color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '180px' }}>
+                                    {idx + 2}. {t.title}
+                                  </span>
+                                  <span style={{ fontSize: '0.7rem', color: t.priority === 'URGENT' ? 'var(--danger)' : t.priority === 'HIGH' ? 'var(--warning)' : 'var(--text-muted)' }}>
+                                    {t.deadlineText}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '0.6rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          You have <strong>{myAssignedIssues.length} pending task(s)</strong> assigned to you.
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                );
-              })()}
+                    );
+                  })()}
+                </div>
+
+                {/* PROJECT-LEVEL DIAGNOSTICS */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.2rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.8rem', color: 'var(--text-secondary)' }}>
+                    💡 Project Health & Schedule Insights
+                  </h4>
+                  {(() => {
+                    const recommendations = [];
+
+                    projects.forEach(p => {
+                      const st = p.stats || { TODO: 0, IN_PROGRESS: 0, IN_REVIEW: 0, DONE: 0 };
+                      const unresolved = (st.TODO || 0) + (st.IN_PROGRESS || 0) + (st.IN_REVIEW || 0);
+                      const total = unresolved + (st.DONE || 0);
+                      const completionRate = total > 0 ? Math.round((st.DONE / total) * 100) : 0;
+
+                      if (unresolved > 4) {
+                        recommendations.push({
+                          type: 'warning',
+                          text: `High Workload Alert on project "${p.name}": There are ${unresolved} active unresolved tasks. Consider assigning them to other team members or splitting phases.`,
+                          project: p
+                        });
+                      }
+
+                      const sp = p.sprints || { PLANNED: 0, ACTIVE: 0, COMPLETED: 0 };
+                      if (sp.PLANNED > 0 && sp.ACTIVE === 0) {
+                        recommendations.push({
+                          type: 'info',
+                          text: `Schedule Optimization: "${p.name}" has planned phases but no active phase running. Start a phase to boost team momentum.`,
+                          project: p
+                        });
+                      }
+
+                      if (completionRate >= 60 && completionRate < 100 && unresolved > 0) {
+                        recommendations.push({
+                          type: 'success',
+                          text: `Boost Velocity: "${p.name}" is ${completionRate}% complete! Prioritize the remaining ${unresolved} task(s) to close this development cycle.`,
+                          project: p
+                        });
+                      }
+                    });
+
+                    if (recommendations.length === 0) {
+                      return (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>
+                          All projects are healthy! Workloads are optimal, and no immediate schedule adjustments are needed.
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {recommendations.slice(0, 3).map((rec, i) => (
+                          <div key={i} style={{ display: 'flex', gap: '0.6rem', background: 'rgba(255,255,255,0.01)', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-sm)', borderLeft: `3px solid ${rec.type === 'warning' ? '#ef4444' : rec.type === 'success' ? '#10b981' : '#0ea5e9'}`, alignItems: 'flex-start' }}>
+                            <div style={{ fontSize: '0.95rem', marginTop: '-2px' }}>
+                              {rec.type === 'warning' ? '⚠️' : rec.type === 'success' ? '🎯' : '💡'}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <p style={{ fontSize: '0.8rem', color: 'var(--text-primary)', margin: 0, lineHeight: '1.4' }}>{rec.text}</p>
+                              <span 
+                                style={{ fontSize: '0.7rem', color: 'var(--text-muted)', cursor: 'pointer', textDecoration: 'underline', marginTop: '0.2rem', display: 'inline-block' }}
+                                onClick={() => { setSelectedProjectId(rec.project.id); setActiveView('board'); }}
+                              >
+                                Go to Project Board &rarr;
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+              </div>
             </div>
 
             {/* --- DASHBOARD ANALYTICS SECTION --- */}
@@ -1573,6 +1709,7 @@ export default function App() {
                                   setEditIssueAssignee(issue.assigneeId || '');
                                   setEditIssueSprint(issue.sprintId || '');
                                   setEditIssueDueDate(issue.dueDate ? issue.dueDate.substring(0, 10) : '');
+                                  setEditIssueEffort(issue.estimatedEffort || 1);
                                   setIsEditingIssue(false);
                                   setShowIssueDetailModal(true); 
                                 }}
@@ -1712,6 +1849,7 @@ export default function App() {
                                       setEditIssueAssignee(issue.assigneeId || '');
                                       setEditIssueSprint(issue.sprintId || '');
                                       setEditIssueDueDate(issue.dueDate ? issue.dueDate.substring(0, 10) : '');
+                                      setEditIssueEffort(issue.estimatedEffort || 1);
                                       setIsEditingIssue(false);
                                       setShowIssueDetailModal(true);
                                     }}
@@ -1870,6 +2008,16 @@ export default function App() {
                 onChange={e => setNewIssueDueDate(e.target.value)}
               />
             </div>
+            <div className="form-group">
+              <label>Estimated Effort (Story Points / Hours)</label>
+              <input 
+                type="number" 
+                min="1"
+                className="form-control" 
+                value={newIssueEffort}
+                onChange={e => setNewIssueEffort(parseInt(e.target.value) || 1)}
+              />
+            </div>
             <div className="form-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setShowNewIssueModal(false)}>Cancel</button>
               <button type="submit" className="btn btn-primary">Create</button>
@@ -1942,6 +2090,17 @@ export default function App() {
                         className="form-control" 
                         value={editIssueDueDate} 
                         onChange={e => setEditIssueDueDate(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Estimated Effort</h5>
+                      <input 
+                        type="number" 
+                        min="1"
+                        className="form-control" 
+                        value={editIssueEffort} 
+                        onChange={e => setEditIssueEffort(parseInt(e.target.value) || 1)}
                       />
                     </div>
                   </div>
@@ -2033,6 +2192,13 @@ export default function App() {
                       <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Due Date</h5>
                       <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                         {selectedIssue.dueDate ? new Date(selectedIssue.dueDate).toLocaleDateString() : 'No deadline set'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Estimated Effort</h5>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        {selectedIssue.estimatedEffort || 1} story points
                       </span>
                     </div>
                   </div>
