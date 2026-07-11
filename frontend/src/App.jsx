@@ -540,7 +540,7 @@ export default function App() {
       <div className="login-container">
         <form className="login-card" onSubmit={handleLogin}>
           <h2>Arbeit Tasks</h2>
-          <p>Manage sprints, boards, and team productivity in real-time.</p>
+          <p>Manage tasks, boards, and team productivity in real-time.</p>
           <div className="form-group">
             <input 
               type="text" 
@@ -747,10 +747,10 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <button className="btn btn-secondary" onClick={() => setShowNewSprintModal(true)}>
-                    <Calendar size={16} /> Add Sprint
+                    <Calendar size={16} /> Add Phase
                   </button>
                   <button className="btn btn-primary" onClick={() => setShowNewIssueModal(true)}>
-                    <Plus size={16} /> Create Issue
+                    <Plus size={16} /> Create Task
                   </button>
                 </div>
               </div>
@@ -760,7 +760,7 @@ export default function App() {
                 <div style={{ flex: '1', minWidth: '200px' }}>
                   <input 
                     type="text" 
-                    placeholder="Search issues by title/description..." 
+                    placeholder="Search tasks by title/description..." 
                     className="form-control"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
@@ -769,15 +769,15 @@ export default function App() {
                 
                 <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Sprint:</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Phase:</span>
                     <select 
                       className="form-control" 
                       style={{ padding: '0.4rem 0.8rem', width: 'auto', minWidth: '150px' }}
                       value={selectedSprintFilter}
                       onChange={e => setSelectedSprintFilter(e.target.value)}
                     >
-                      <option value="all">All Sprints</option>
-                      <option value="backlog">Backlog (No Sprint)</option>
+                      <option value="all">All Phases</option>
+                      <option value="backlog">Backlog (No Phase)</option>
                       {(projectDetail.sprints || []).map(s => (
                         <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
                       ))}
@@ -819,12 +819,12 @@ export default function App() {
                   <div>
                     {projectDetail.sprints[0].status === 'PLANNED' && (
                       <button className="btn btn-primary" onClick={() => handleStartSprint(projectDetail.sprints[0].id)}>
-                        <Play size={14} /> Start Sprint
+                        <Play size={14} /> Start Phase
                       </button>
                     )}
                     {projectDetail.sprints[0].status === 'ACTIVE' && (
                       <button className="btn btn-success" onClick={() => handleCompleteSprint(projectDetail.sprints[0].id)}>
-                        <CheckCircle size={14} /> Complete Sprint
+                        <CheckCircle size={14} /> Complete Phase
                       </button>
                     )}
                   </div>
@@ -954,9 +954,9 @@ export default function App() {
       {showNewSprintModal && (
         <div className="modal-overlay">
           <form className="modal-content" onSubmit={handleCreateSprint}>
-            <h3>Add New Sprint</h3>
+            <h3>Add New Phase</h3>
             <div className="form-group">
-              <label>Sprint Name</label>
+              <label>Phase Name</label>
               <input 
                 type="text" 
                 className="form-control" 
@@ -1044,7 +1044,7 @@ export default function App() {
               </select>
             </div>
             <div className="form-group">
-              <label>Sprint (Optional)</label>
+              <label>Phase (Optional)</label>
               <select 
                 className="form-control" 
                 value={newIssueSprint}
@@ -1120,7 +1120,7 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Sprint</h5>
+                      <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem', fontSize: '0.85rem' }}>Phase</h5>
                       <select 
                         className="form-control" 
                         value={editIssueSprint} 
