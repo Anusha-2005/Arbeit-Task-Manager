@@ -33,7 +33,6 @@ export default function App() {
   
   const [showNewProjModal, setShowNewProjModal] = useState(false);
   const [newProjName, setNewProjName] = useState('');
-  const [newProjKey, setNewProjKey] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
 
   const [showNewSprintModal, setShowNewSprintModal] = useState(false);
@@ -296,18 +295,28 @@ export default function App() {
   // Create Project
   const handleCreateProject = async (e) => {
     e.preventDefault();
+    const generatedKey = newProjName
+      .split(' ')
+      .filter(word => word.trim().length > 0)
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 5);
+
+    const projectKey = generatedKey.length > 1 ? generatedKey : newProjName.slice(0, 4).toUpperCase();
+    const finalKey = projectKey || 'PROJ';
+
     try {
       await fetchApi('/projects', {
         method: 'POST',
         body: JSON.stringify({
           name: newProjName,
-          key: newProjKey,
+          key: finalKey,
           description: newProjDesc
         })
       });
       setShowNewProjModal(false);
       setNewProjName('');
-      setNewProjKey('');
       setNewProjDesc('');
       loadDashboardData();
     } catch (err) {
@@ -923,16 +932,7 @@ export default function App() {
                 required
               />
             </div>
-            <div className="form-group">
-              <label>Project Key (eg: SCRUM, JIRA)</label>
-              <input 
-                type="text" 
-                className="form-control" 
-                value={newProjKey}
-                onChange={e => setNewProjKey(e.target.value)}
-                required
-              />
-            </div>
+
             <div className="form-group">
               <label>Description</label>
               <textarea 
