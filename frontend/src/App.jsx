@@ -88,9 +88,10 @@ export default function App() {
 
   // --- API FETCH HELPER ---
   const fetchApi = async (endpoint, options = {}) => {
+    const activeToken = localStorage.getItem('token') || token;
     const headers = {
       'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      ...(activeToken ? { 'Authorization': `Bearer ${activeToken}` } : {})
     };
     const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
     if (!res.ok) {
@@ -375,6 +376,10 @@ export default function App() {
       localStorage.setItem('token', data.token);
       setToken(data.token);
       setUser(data.user);
+      
+      // Load dashboard data synchronously using the new token
+      await loadDashboardData();
+      
       showToast(authMode === 'login' ? 'Logged in successfully' : 'Account created', 'success');
     } catch (err) {
       showToast((authMode === 'login' ? 'Login failed: ' : 'Registration failed: ') + err.message, 'danger');
