@@ -391,7 +391,7 @@ export default function App() {
     return (
       <div className="login-container">
         <form className="login-card" onSubmit={handleLogin}>
-          <h2>ZCRUM Tasks</h2>
+          <h2>Arbeit Tasks</h2>
           <p>Manage sprints, boards, and team productivity in real-time.</p>
           <div className="form-group">
             <input 
@@ -425,7 +425,7 @@ export default function App() {
       {/* HEADER */}
       <header className="app-header">
         <div className="logo-section" onClick={() => { setActiveView('dashboard'); setSelectedProjectId(null); }}>
-          <h1>ZCRUM</h1>
+          <h1>ARBEIT</h1>
         </div>
         <div className="nav-controls">
           {activeView === 'board' && (
